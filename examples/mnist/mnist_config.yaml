@@ -1,7 +1,6 @@
 MODEL:
   meta:
     arch: mnn_mlp
-    cnn: True
     cnn_type: ~
     mlp_type: mnn_mlp
 
@@ -65,4 +64,6 @@ input_prepare: flatten_poisson
 save_epoch_state: False
 scale_factor: 0.1
 is_classify: True
+background_noise: ~
+dump_path: ./checkpoint/
 
