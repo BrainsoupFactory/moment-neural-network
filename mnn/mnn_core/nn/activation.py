@@ -2,7 +2,7 @@
 import torch
 from torch import Tensor
 from typing import Tuple
-from .. import functional
+from . import functional
 from ..mnn_pytorch import mnn_activate_trio, mnn_activate_no_rho
 
 class OriginMnnActivation(torch.nn.Module):

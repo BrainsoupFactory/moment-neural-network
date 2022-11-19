@@ -3,7 +3,6 @@ import os
 import random
 
 import numpy as np
-import timm
 import torch.backends.cudnn as cudnn
 import torch.nn
 import torchvision
@@ -224,6 +223,8 @@ def prepare_args(parser):
     args.world_size = torch.cuda.device_count()
     args.distributed = args.world_size > 1 or args.multiprocessing_distributed
     args.local_rank = 0
+    if torch.cuda.is_available and not args.cpu:
+        args.use_cuda = True
     return args
 
 def model_generator(checkpoint_path, save_name, to_cuda=False, resume_model=True, local_rank=0, resume_best=False):

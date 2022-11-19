@@ -7,7 +7,7 @@ Copyright 2020 Zhichao Zhu, ISTBI, Fudan University China
 from typing import Any
 import torch
 
-from mnn_core.mnn_utils import *
+from .mnn_utils import *
 
 mnn_core_func = Mnn_Core_Func()
 
