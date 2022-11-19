@@ -14,15 +14,10 @@ MODEL:
     bn_bias_var: False
     predict_bias: True
     predict_bias_var: False
-    activation: raw
-    use_cov: False
-    use_mean: True
     special_init: True
     dropout: ~
     momentum: 0.9
     eps: 1.e-5
-    signal_correlation: False
-    sparse_degree: 200
 
   snn_mlp:
    structure:
@@ -30,7 +25,6 @@ MODEL:
     - 800
    num_class: 10
    use_cov: False
-   activation: raw
    bn_bias_var: False
 
 CRITERION:
@@ -70,4 +64,5 @@ dataset_type: classic
 input_prepare: flatten_poisson
 save_epoch_state: False
 scale_factor: 0.1
+is_classify: True
 

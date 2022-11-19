@@ -104,51 +104,39 @@ class TrainProcessCollections:
     def __init__(self):
         pass
 
-    @staticmethod
-    def set_random_seed(seed):
+    def set_random_seed(self, seed):
         general_prepare.PrepareMethods.seed_everything(seed)
 
-    @staticmethod
-    def make_model(model_args: dict):
+    def make_model(self, model_args: dict):
         model = general_prepare.make_model(model_args=model_args)
         return model
     
-    @staticmethod
-    def prepare_dataloader(args, data_dir='./data/'):
+    def prepare_dataloader(self, args, data_dir='./data/'):
         train_loader, test_loader = general_prepare.prepare_dataloader(args, data_dir)
         return train_loader, test_loader
 
-    @staticmethod
-    def prepare_optimizer_scheduler(params_group, args):
+    def prepare_optimizer_scheduler(self, params_group, args):
         optimizer, scheduler = general_prepare.prepare_optimizer_scheduler(params_group, args)
         return optimizer, scheduler
 
-    @staticmethod
-    def prepare_criterion(args):
-        try:
-            criterion = general_prepare.make_criterion(args.CRITERION)
-        except AttributeError:
-            criterion = general_prepare.mnn_core.nn.CrossEntropyOnMean()
+    def prepare_criterion(self, args):
+        criterion = general_prepare.prepare_criterion(args)
         return criterion
 
-    @staticmethod
-    def params_clip(model, MIN=-1, MAX=1):
+    def params_clip(self, model, MIN=-1, MAX=1):
         for p in model.parameters():
             p.data.clamp_(MIN, MAX)
         return model
 
-    @staticmethod
-    def params_frozen(model):
+    def params_frozen(self, model):
         for p in model.parameters():
             p.requires_grad = False
         return model
 
-    @staticmethod
-    def specify_params_group(model):
+    def specify_params_group(self, model):
         return filter(lambda p: p.requires_grad, model.parameters())
 
-    @staticmethod
-    def data2device(data, target, args):
+    def data2device(self, data, target, args):
         if args.use_cuda:
             data = data.cuda(args.local_rank, non_blocking=True)
             target = target.cuda(args.local_rank, non_blocking=True)
@@ -171,8 +159,7 @@ class TrainProcessCollections:
                     sub_model = getattr(sub_model, module_key)
                 _ = self.params_clip(sub_model, MIN=clip_args[key]['min'], MAX=clip_args[key]['max'])
 
-    @staticmethod
-    def metric_init(data_loader, epoch, prefix='Epoch: [{}]'):
+    def metric_init(self, data_loader, epoch, prefix='Epoch: [{}]'):
         batch_time = AverageMeter('Time', ':6.3f')
         data_time = AverageMeter('Data', ':6.3f')
         losses = AverageMeter('Loss', ':.4e')
@@ -184,8 +171,7 @@ class TrainProcessCollections:
             prefix=prefix.format(epoch))
         return batch_time, data_time, losses, top1, progress
 
-    @staticmethod
-    def reduce_distributed_info(args,  *metrics):
+    def reduce_distributed_info(self, args,  *metrics):
         temp = []
         for i in metrics:
             temp.append(func.DistributedOps.reduce_mean(i, args.nprocs))
@@ -309,8 +295,7 @@ class TrainProcessCollections:
     def score_function(self, output, target, *args, **kwargs):
         return self.accuracy(output, target, *args, **kwargs)
 
-    @staticmethod
-    def accuracy(output, target, topk=(1,), pred_prob=None):
+    def accuracy(self, output, target, topk=(1,), pred_prob=None):
         """Computes the accuracy over the k top predictions for the specified values of k"""
         with torch.no_grad():
             if pred_prob is None:
@@ -330,14 +315,12 @@ class TrainProcessCollections:
                 res.append(correct_k.mul_(100.0 / batch_size))
             return res
 
-    @staticmethod
-    def save_checkpoint(state, is_best, save_path, save_name='checkpoint'):
+    def save_checkpoint(self, state, is_best, save_path, save_name='checkpoint'):
         torch.save(state, save_path + save_name + '.pth')
         if is_best:
             shutil.copyfile(save_path + save_name + '.pth', save_path + save_name + '_best_model.pth')
 
-    @staticmethod
-    def resume_model(args, model, local_rank=0):
+    def resume_model(self, args, model, local_rank=0):
         if args.use_cuda:
             loc = 'cuda:{}'.format(local_rank)
         else:
@@ -356,8 +339,7 @@ class TrainProcessCollections:
         model.load_state_dict(checkpoint['state_dict'])
         return args, model, best_acc1
 
-    @staticmethod
-    def resume_optimizer_scheduler(args, optimizer, lr_scheduler=None, local_rank=0):
+    def resume_optimizer_scheduler(self, args, optimizer, lr_scheduler=None, local_rank=0):
         if args.use_cuda:
             loc = 'cuda:{}'.format(local_rank)
         else:
@@ -381,8 +363,7 @@ class TrainProcessCollections:
             lr_scheduler.load_state_dict(scheduler_state)
         return optimizer, lr_scheduler
 
-    @staticmethod
-    def run_training(args, model, train_loader, val_loader, criterion, optimizer, lr_scheduler,
+    def run_training(self, args, model, train_loader, val_loader, criterion, optimizer, lr_scheduler,
                     train_func, best_acc1, save_path, local_rank=0):
         best_epoch = args.start_epoch
         for epoch in range(args.start_epoch, args.epochs):

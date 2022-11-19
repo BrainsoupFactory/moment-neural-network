@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import torch
 import numpy as np
-import mnn_core
+from .. import mnn_core
 from torch import Tensor
 from .. import utils
 from . import base, mnn2snn
@@ -23,7 +23,7 @@ def modify_value_by_condition(data, condition):
 
 class MnnSnnValidate:
     def __init__(self, args, running_time=20, dt=1e-2, num_trials=100, monitor_size=None, 
-                pregenerate=False, resume_best=True, train=False, init_vol=None, alias='', input_type='gaussian',**kwargs) -> None:
+                pregenerate=False, resume_best=False, train=False, init_vol=None, alias='', input_type='gaussian',**kwargs) -> None:
         
         args = self.resume_config(args=args, resume_best=resume_best)
         self.args = args
