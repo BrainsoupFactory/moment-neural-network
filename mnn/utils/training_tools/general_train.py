@@ -149,8 +149,9 @@ class TrainProcessCollections:
 
     @staticmethod
     def data2device(data, target, args):
-        data = data.cuda(args.local_rank, non_blocking=True)
-        target = target.cuda(args.local_rank, non_blocking=True)
+        if args.use_cuda:
+            data = data.cuda(args.local_rank, non_blocking=True)
+            target = target.cuda(args.local_rank, non_blocking=True)
         if getattr(args, 'input_prepare', None) == 'flatten_poisson':
             data = torch.flatten(data, start_dim=1) * getattr(args, 'scale_factor', 1.)
             cov = torch.diag_embed(torch.abs(data))
@@ -337,7 +338,10 @@ class TrainProcessCollections:
 
     @staticmethod
     def resume_model(args, model, local_rank=0):
-        loc = 'cuda:{}'.format(local_rank)
+        if args.use_cuda:
+            loc = 'cuda:{}'.format(local_rank)
+        else:
+            loc = 'cpu'
         save_path = getattr(args, 'dump_path', './checkpoint/') + args.dir + '/'
         resume_best = getattr(args, 'resume_best', False)
         if resume_best:
@@ -354,7 +358,10 @@ class TrainProcessCollections:
 
     @staticmethod
     def resume_optimizer_scheduler(args, optimizer, lr_scheduler=None, local_rank=0):
-        loc = 'cuda:{}'.format(local_rank)
+        if args.use_cuda:
+            loc = 'cuda:{}'.format(local_rank)
+        else:
+            loc = 'cpu'
         save_path = getattr(args, 'dump_path', './checkpoint/') + args.dir + '/'
         resume_best = getattr(args, 'resume_best', False)
         if resume_best:
@@ -486,8 +493,9 @@ def general_train_pipeline(args, train_func=TrainProcessCollections):
     if hasattr(args, 'MnnActivationConfig'):
         general_prepare.config_mnn_activation(args.MnnActivationConfig)
     best_acc1 = - np.inf # To support regression task.
-    torch.cuda.set_device(local_rank)
-    cudnn.benchmark = True
+    if args.use_cuda:
+        torch.cuda.set_device(local_rank)
+        cudnn.benchmark = True
 
     save_path = getattr(args, 'dump_path', './checkpoint/') + args.dir + '/'
     args.log_path = save_path + args.save_name + '_log.txt'
@@ -499,13 +507,15 @@ def general_train_pipeline(args, train_func=TrainProcessCollections):
     model = train_func.make_model(args.MODEL)
     if args.resume:
         args, model, best_acc1 = train_func.resume_model(args, model, local_rank)
-
-    model.cuda(local_rank)
+    if args.use_cuda:
+        model.cuda(local_rank)
     # prepare dataloader
     train_loader, val_loader = train_func.prepare_dataloader(args, args.data_dir)
 
     # criterion, optimizer and lr_scheduler
-    criterion = train_func.prepare_criterion(args).cuda(local_rank)
+    criterion = train_func.prepare_criterion(args)
+    if args.use_cuda:
+        criterion = criterion.cuda(local_rank)
     params_group = train_func.specify_params_group(model)
     optimizer, lr_scheduler = train_func.prepare_optimizer_scheduler(params_group, args)
 
