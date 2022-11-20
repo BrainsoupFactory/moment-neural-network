@@ -221,7 +221,7 @@ def prepare_args(parser):
     if args.gpu is not None:
         os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     args.world_size = torch.cuda.device_count()
-    args.distributed = args.world_size > 1 or args.multiprocessing_distributed
+    args.distributed = args.world_size > 1 and args.multiprocessing_distributed
     args.local_rank = 0
     if torch.cuda.is_available and not args.cpu:
         args.use_cuda = True
