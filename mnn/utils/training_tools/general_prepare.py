@@ -223,8 +223,10 @@ def prepare_args(parser):
     args.world_size = torch.cuda.device_count()
     args.distributed = args.world_size > 1 and args.multiprocessing_distributed
     args.local_rank = 0
-    if torch.cuda.is_available and not args.cpu:
+    if torch.cuda.is_available() and not args.cpu:
         args.use_cuda = True
+    else:
+        args.use_cuda = False
     return args
 
 def model_generator(checkpoint_path, save_name, to_cuda=False, resume_model=True, local_rank=0, resume_best=False):
