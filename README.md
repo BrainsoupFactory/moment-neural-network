@@ -4,7 +4,7 @@
 - [Getting Started](#getting-started)
   - [Quick start: three steps to run your first MNN model](#quick-start-three-steps-to-run-your-first-mnn-model)
   - [Configure the MNN model](#configure-the-mnn-model)
-  - [Configure additional training options via argparser.](#configure-additional-training-options-via-argparser)
+  - [Configure additional training options via input arguments.](#configure-additional-training-options-via-input-arguments)
   - [Run simulations of the reconstructed SNN](#run-simulations-of-the-reconstructed-snn)
   - [Customize your own MNN model](#customize-your-own-mnn-model)
 - [Lead authors](#lead-authors)
@@ -83,7 +83,7 @@ Some examples of the `OPT` field:
 * `dir`: directory name for saving training data
 * `save_name`: the prefix of file name of training data
 * `epochs`: the number of epochs to train.
-* `cpu': manually set device to CPU 
+* `cpu`: manually set device to CPU 
 
 I recommend you to read the func `deploy_config()` in `utils.training_tools.general_prepare`
 
