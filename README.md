@@ -35,7 +35,7 @@
 3. Run the following command to call the script named `mnist.py` with the config file specified through the option:
 
    ```
-   python mnist.py --config=./mnist.yaml
+   python mnist.py --config=./mnist_config.yaml
    ```
 
 After training is finished, you should find four files in the **./checkpoint/mnist/** folder：
@@ -71,22 +71,21 @@ There are some advanced options in the config file:
 * `is_classify`: the task type, if `False`, the best model is determined by the epoch that has minimal loss.
 * `background_noise`: this value will add to the diagonal of input covariance (Can be helpful if input covariance is very weak or close to singular)
 
-## Configure additional training options via argparser.
+## Configure additional training options via input arguments.
 
-I recommend you to read the func `deploy_config()` in `utils.training_tools.general_prepare`
-Some important options:
+```
+python main_script.py --config=./your_config_file.yaml --OPT=VALUE
+```
 
+Some examples of the `OPT` field: 
 * `seed`: fix the seed for all RNGs used by the model. By default it is `None` (not fixed)
 * `bs`: batch size used in the data loader
 * `dir`: directory name for saving training data
 * `save_name`: the prefix of file name of training data
 * `epochs`: the number of epochs to train.
+* `cpu': manually set device to CPU 
 
-How to use:
-
-```
-python main_script.py --config=./your_config_file.yaml --OPT=VALUE
-```
+I recommend you to read the func `deploy_config()` in `utils.training_tools.general_prepare`
 
 **Note** all manual argument will be overwritten if the same keys are found in the provided **your_config_file.yaml**
 
