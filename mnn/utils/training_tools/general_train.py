@@ -110,7 +110,7 @@ class TrainProcessCollections:
     def make_model(self, model_args: dict):
         model = general_prepare.make_model(model_args=model_args)
         return model
-    
+
     def prepare_dataloader(self, args, data_dir='./data/'):
         train_loader, test_loader = general_prepare.prepare_dataloader(args, data_dir)
         return train_loader, test_loader
@@ -120,14 +120,17 @@ class TrainProcessCollections:
         return optimizer, scheduler
 
     def prepare_criterion(self, args):
-        criterion = general_prepare.prepare_criterion(args)
+        try:
+            criterion = general_prepare.make_criterion(args.CRITERION)
+        except AttributeError:
+            criterion = general_prepare.mnn_core.nn.CrossEntropyOnMean()
         return criterion
 
     def params_clip(self, model, MIN=-1, MAX=1):
         for p in model.parameters():
             p.data.clamp_(MIN, MAX)
         return model
-
+    
     def params_frozen(self, model):
         for p in model.parameters():
             p.requires_grad = False
@@ -180,6 +183,16 @@ class TrainProcessCollections:
         #acc5 = func.DistributedOps.reduce_mean(acc5, args.nprocs)
         return temp
 
+    def compute_model_output(self, model, inputs, args=None):
+        # args used for custom operation, will pass the args through train and val
+        output = model(inputs)
+        return output
+    
+    def compute_loss(self, output, target, criterion, model=None, args=None, inputs=None):
+        # will pass the model and args by default in train and val process to support custom operation
+        loss = criterion(output, target)
+        return loss
+
     def train_one_epoch(self, train_loader, model, criterion, optimizer, epoch, args,):
         batch_time, data_time, losses, top1, progress = self.metric_init(train_loader, epoch)
 
@@ -207,8 +220,8 @@ class TrainProcessCollections:
             images, target = self.data2device(images, target, args)
 
             # compute output
-            output = model(images)
-            loss = criterion(output, target)
+            output = self.compute_model_output(model, images, args)
+            loss = self.compute_loss(output=output, target=target, criterion=criterion, model=model, args=args, inputs=images)
             if isinstance(loss, tuple):
                 loss, pred = loss
             else:
@@ -229,15 +242,18 @@ class TrainProcessCollections:
             torch.cuda.synchronize()
             batch_time.update(time.time() - end)
             num_updates += 1
-
-            acc1, = self.score_function(output, target, topk=(1, ), pred_prob=pred)
-            if args.distributed:
-                loss, acc1 = self.reduce_distributed_info(args, loss, acc1)
-            # measure accuracy and record loss
+            
             if isinstance(images, tuple):
                 images = images[0]
+
+            if getattr(args, 'task_type', 'classify') == 'classify':
+                acc1, = self.score_function(output, target, topk=(1, ), pred_prob=pred)
+                if args.distributed:
+                    loss, acc1 = self.reduce_distributed_info(args, loss, acc1)
+                top1.update(acc1.item(), images.size(0))
+            # measure accuracy and record loss
+            
             losses.update(loss.item(), images.size(0))
-            top1.update(acc1.item(), images.size(0))
             #top5.update(acc5.item(), images.size(0))
 
             end = time.time()
@@ -263,23 +279,25 @@ class TrainProcessCollections:
                 images, target = self.data2device(images, target, args)
 
                 # compute output
-                output = model(images)
-                loss = criterion(output, target)
+                output = self.compute_model_output(model, images, args)
+                loss = self.compute_loss(output=output, target=target, criterion=criterion, model=model, args=args, inputs=images)
                 if isinstance(loss, tuple):
                     loss, pred = loss
                 else:
                     pred = None
-
-                # measure accuracy and record loss
-                acc1, = self.score_function(output, target, topk=(1, ), pred_prob=pred)
-                if args.distributed:
-                    loss, acc1 = self.reduce_distributed_info(args, loss, acc1)
-                # measure accuracy and record loss
+                    
                 if isinstance(images, tuple):
                     images = images[0]
+                    
+                # measure accuracy and record loss
+                if getattr(args, 'task_type', 'classify') == 'classify':
+                    acc1, = self.score_function(output, target, topk=(1, ), pred_prob=pred)
+                    if args.distributed:
+                        loss, acc1 = self.reduce_distributed_info(args, loss, acc1)
+                    top1.update(acc1.item(), images.size(0))
+                # measure accuracy and record loss
                 losses.update(loss.item(), images.size(0))
-                top1.update(acc1.item(), images.size(0))
-                #top5.update(acc5.item(), images.size(0))
+                
                 # measure elapsed time
                 batch_time.update(time.time() - end)
                 end = time.time()
@@ -363,7 +381,7 @@ class TrainProcessCollections:
             lr_scheduler.load_state_dict(scheduler_state)
         return optimizer, lr_scheduler
 
-    def run_training(self, args, model, train_loader, val_loader, criterion, optimizer, lr_scheduler,
+    def run_training(args, model, train_loader, val_loader, criterion, optimizer, lr_scheduler,
                     train_func, best_acc1, save_path, local_rank=0):
         best_epoch = args.start_epoch
         for epoch in range(args.start_epoch, args.epochs):

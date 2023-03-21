@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 from . import fast_dawson
+import torch
+from torch import Tensor
+from typing import Tuple
 
 
 class Param_Container:
@@ -151,13 +154,14 @@ class Mnn_Core_Func(Param_Container):
         indx3 = np.logical_and(~indx0, ubar <= self.vol_th * self.L)
         indx4 = np.logical_and(~indx0, ubar > self.vol_th * self.L)
         mean_out[indx3] = 0.0
-        mean_out[indx4] = 1 / (self.t_ref - 1 / self.L * np.log(1 - 1 / ubar[indx4]))
+        mean_out[indx4] = 1 / (self.t_ref - 1 / self.L * np.log(1 - self.vol_th * self.L / ubar[indx4]))
 
         return mean_out
 
     def backward_fast_mean(self, ubar, sbar, u_a):
         indx0 = sbar > 0
-        indx1 = (self.vol_th * self.L - ubar) < (self.cut_off * np.sqrt(self.L) * sbar)
+        temp = self.vol_th * self.L
+        indx1 = (temp - ubar) < (self.cut_off * np.sqrt(self.L) * sbar)
         indx2 = indx0 & indx1
 
         grad_uu = np.zeros(ubar.shape)  # Fano factor
@@ -171,11 +175,11 @@ class Mnn_Core_Func(Param_Container):
         grad_uu[indx2] = u_a[indx2] * u_a[indx2] / sbar[indx2] * delta_g * 2 / self.L / np.sqrt(self.L)
 
         # Region 2 is calculated with analytical limit as sbar --> 0
-        indx6 = np.logical_and(~indx0, ubar <= 1)
-        indx4 = np.logical_and(~indx0, ubar > 1)
+        indx6 = np.logical_and(~indx0, ubar <= temp)
+        indx4 = np.logical_and(~indx0, ubar > temp)
 
         grad_uu[indx6] = 0.0
-        grad_uu[indx4] = self.vol_th * u_a[indx4] * u_a[indx4] / ubar[indx4] / (ubar[indx4] - self.vol_th * self.L)
+        grad_uu[indx4] = self.vol_th * u_a[indx4] * u_a[indx4] / ubar[indx4] / (ubar[indx4] - temp)
 
         # ---------------
 
@@ -205,7 +209,7 @@ class Mnn_Core_Func(Param_Container):
         fano_factor[indx2] = varT * u_a[indx2] * u_a[indx2]
 
         # Region 2 is calculated with analytical limit as sbar --> 0
-        fano_factor[~indx0] = (ubar[~indx0] < 1) + 0.0
+        fano_factor[~indx0] = (ubar[~indx0] < self.vol_th * self.L) + 0.0
 
         std_out = np.sqrt(fano_factor * u_a)
         return std_out
@@ -240,7 +244,7 @@ class Mnn_Core_Func(Param_Container):
         grad_ss[indx2] = 3 / self.L * s_a[indx2] / sbar[indx2] * u_a[indx2] * temp_dg \
                          - 1 / 2 * s_a[indx2] / sbar[indx2] * temp_dh / delta_H
 
-        indx4 = np.logical_and(~indx0, ubar > 1)
+        indx4 = np.logical_and(~indx0, ubar > self.vol_th * self.L)
 
         grad_ss[indx4] = 1 / np.sqrt(2 * self.L) * np.power(u_a[indx4], 1.5) * np.sqrt(
             1 / (1 - ubar[indx4]) / (1 - ubar[indx4]) - 1 / ubar[indx4] / ubar[indx4])
@@ -305,7 +309,7 @@ class Mnn_Core_Func(Param_Container):
                           - np.sqrt(2) / self.L * np.sqrt(u_a[indx2] / delta_H) * tmp1 / sbar[indx2] \
                           + chi[indx2] * delta_h / delta_H / 2 / np.sqrt(self.L) / sbar[indx2]
 
-        indx4 = np.logical_and(~indx0, ubar > 1)
+        indx4 = np.logical_and(~indx0, ubar > self.vol_th * self.L)
 
         tmp_grad_uu = self.vol_th * u_a[indx4] * u_a[indx4] / ubar[indx4] / (ubar[indx4] - self.vol_th * self.L)
 
@@ -330,21 +334,23 @@ class Mnn_Core_Func(Param_Container):
 
     def fast_forward(self, ubar, sbar):
         indx0 = sbar > 0
-        indx1 = (self.vol_th * self.L - ubar) < (self.cut_off * np.sqrt(self.L) * sbar)
+        threshold = self.vol_th * self.L
+        indx1 = (threshold - ubar) < (self.cut_off * np.sqrt(self.L) * sbar)
         indx2 = indx0 & indx1
-        indx4 = np.logical_and(~indx0, ubar > self.vol_th * self.L)
+        indx4 = np.logical_and(~indx0, ubar > threshold)
 
         u_2 = ubar[indx2]
         s_2 = sbar[indx2]
         u_4 = ubar[indx4]
         u_a = np.zeros(ubar.shape)
-        ub = (self.vol_th * self.L - u_2) / (s_2 * np.sqrt(self.L))
-        lb = (self.vol_rest * self.L - u_2) / (s_2 * np.sqrt(self.L))
+        temp = s_2 * np.sqrt(self.L)
+        ub = (threshold - u_2) / temp
+        lb = (self.vol_rest * self.L - u_2) / temp
 
         temp_mean = 2 / self.L * (self.Dawson1.int_fast(ub) - self.Dawson1.int_fast(lb))
         u_a_2 = 1 / (temp_mean + self.t_ref)
         u_a[indx2] = u_a_2
-        u_a[indx4] = 1 / (self.t_ref - 1 / self.L * np.log(1 - 1 / u_4))
+        u_a[indx4] = 1 / (self.t_ref - 1 / self.L * np.log(1 - threshold / u_4))
 
         fano_factor = np.zeros(ubar.shape)
         varT = 8 / self.L / self.L * (self.Dawson2.int_fast(ub) - self.Dawson2.int_fast(lb))
@@ -360,12 +366,13 @@ class Mnn_Core_Func(Param_Container):
 
     def fast_backward(self, ubar, sbar, u_a, s_a, chi):
         indx0 = sbar > 0
-        indx1 = (self.vol_th * self.L - ubar) < (self.cut_off * np.sqrt(self.L) * sbar)
+        threshold = self.vol_th * self.L
+        indx1 = (threshold - ubar) < (self.cut_off * np.sqrt(self.L) * sbar)
         indx2 = indx0 & indx1
-
-        ub = (self.vol_th * self.L - ubar[indx2]) / (sbar[indx2] * np.sqrt(self.L))
-        lb = (self.vol_rest * self.L - ubar[indx2]) / (sbar[indx2] * np.sqrt(self.L))
-        indx4 = np.logical_and(~indx0, ubar > 1)
+        temp = sbar[indx2] * np.sqrt(self.L)
+        ub = (threshold - ubar[indx2]) / temp
+        lb = (self.vol_rest * self.L - ubar[indx2]) / temp
+        indx4 = np.logical_and(~indx0, ubar > threshold)
 
         s_2 = sbar[indx2]
         s_a_2 = s_a[indx2]
@@ -380,8 +387,8 @@ class Mnn_Core_Func(Param_Container):
         delta_g = ub_g1 - lb_g2
         temp1 = u_a_2 * u_a_2 / s_2
         grad_uu[indx2] = temp1 * delta_g * 2 / self.L / np.sqrt(self.L)
-
-        grad_uu[indx4] = self.vol_th * u_a_4 * u_a_4 / u_4 / (u_4 - self.vol_th * self.L)
+        
+        grad_uu[indx4] = self.vol_th * u_a_4 * u_a_4 / u_4 / (u_4 - threshold)
 
         grad_us = np.zeros(ubar.shape)
         temp_dg = ub_g1 * ub - lb_g2 * lb
@@ -406,23 +413,24 @@ class Mnn_Core_Func(Param_Container):
 
         grad_ss[indx2] = 3 / self.L * temp * u_a_2 * temp_dg - 1 / 2 * temp * temp_dh / delta_H
 
+        temp3 = threshold - u_4
         grad_ss[indx4] = 1 / np.sqrt(2 * self.L) * np.power(u_a_4, 1.5) * np.sqrt(
-            1 / (1 - u_4) / (1 - u_4) - 1 / u_4 / u_4)
+            1 / temp3 / temp3 - 1 / u_4 / u_4)
 
         grad_chu = np.zeros(ubar.shape)
         grad_chu[indx2] = 0.5 * chi_2 / u_a_2 * grad_uu[indx2] \
                           - np.sqrt(2) / self.L * np.sqrt(u_a_2 / delta_H) * temp_dg / s_2 \
                           + chi_2 * delta_h / delta_H / 2 / np.sqrt(self.L) / s_2
 
-        tmp_grad_uu = self.vol_th * u_a_4 * u_a_4 / u_4 / (u_4 - self.vol_th * self.L)
-
-        grad_chu[indx4] = 1 / np.sqrt(2 * self.L) / np.sqrt(u_a_4 * (2 * u_4 - 1)) * tmp_grad_uu \
-                          - np.sqrt(2 / self.L) / (self.vol_th * self.L) * np.sqrt(u_a_4) * np.power(
-            2 * u_4 - 1, -1.5)
+        tmp_grad_uu = grad_uu[indx4]
+        temp4 = 2 * u_4 / threshold - 1
+        grad_chu[indx4] = 1 / np.sqrt(2 * self.L) / np.sqrt(u_a_4 * temp4) * tmp_grad_uu \
+                          - np.sqrt(2 / self.L) / threshold * np.sqrt(u_a_4) * np.power(
+            temp4, -1.5)
 
         grad_chs = np.zeros(ubar.shape)
         temp_dg = 2 * (ub_g1 * ub * ub - lb_g2 * lb * lb) \
-                  + self.vol_th * self.L / np.sqrt(self.L) / sbar[indx2]
+                  + ub - lb
         grad_chs[indx2] = chi_2 * (0.5 / u_a_2 * grad_us[indx2] - (temp_dg / delta_g) / s_2
                                         + 0.5 / s_2 / delta_H * temp_dh)
 
