@@ -381,7 +381,7 @@ class TrainProcessCollections:
             lr_scheduler.load_state_dict(scheduler_state)
         return optimizer, lr_scheduler
 
-    def run_training(args, model, train_loader, val_loader, criterion, optimizer, lr_scheduler,
+    def run_training(self, args, model, train_loader, val_loader, criterion, optimizer, lr_scheduler,
                     train_func, best_acc1, save_path, local_rank=0):
         best_epoch = args.start_epoch
         for epoch in range(args.start_epoch, args.epochs):
