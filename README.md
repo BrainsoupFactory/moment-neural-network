@@ -1,3 +1,5 @@
+
+# Table of content
 - [moment-neural-network](#moment-neural-network)
   - [The architecture of this repository](#the-architecture-of-this-repository)
 - [Dependencies](#dependencies)
@@ -6,11 +8,16 @@
   - [Configure the MNN model](#configure-the-mnn-model)
   - [Configure additional training options via input arguments.](#configure-additional-training-options-via-input-arguments)
   - [Run simulations of the reconstructed SNN](#run-simulations-of-the-reconstructed-snn)
-  - [Customize your own MNN model](#customize-your-own-mnn-model)
+- [Customize your own MNN model](#customize-your-own-mnn-model)
+  - [Custom dataset](#custom-dataset)
+  - [Custom loss function](#custom-loss-function)
+  - [Custom model](#custom-model)
 - [Lead authors](#lead-authors)
 - [License](#license)
 
 # moment-neural-network
+
+The moment neural network is a type of second-order artificial neural network model designed to capture the nonlinear coupling of correlated activity of spiking neurons. In brief, the moment neural networks extend conventional rate-based artificial neural network models by incorporating the covariance of fluctuating neural activity. This repository provides a comprehensive framework for simulating and training moment neural networks based on the standard workflow of pytorch. 
 
 ## The architecture of this repository
 
@@ -20,19 +27,24 @@
 * `utils`: a collection of useful utilities for training MNN (ANN compatible).
 
 # Dependencies
+* python 3
 * pytorch: 1.12.1
 * torchvision: 0.13.1
 * scipy: 1.7.3
 * pyyaml: 6.0
 * numpy: 1.22.3
+* CUDA (optional)
 
 # Getting Started
 
 ## Quick start: three steps to run your first MNN model
 
-1. Copy the example files, **./example/mnist/mnist.py** and **./example/mnist/mnist_config.yaml** to the root directory
-2. Create two directory, **./checkpoint/** (for saving trained model results) and **./data/** (for downloading MNIST dataset).
-3. Run the following command to call the script named `mnist.py` with the config file specified through the option:
+The following provides a step-by-step instruction to train an MNN to learn MNIST image classification task with a multi-layer perceptron structure.
+
+1. Clone the repository to your local drive.
+2. Copy the demo files, **./example/mnist/mnist.py** and **./example/mnist/mnist_config.yaml** to the root directory.
+3. Create two directories, **./checkpoint/** (for saving trained model results) and **./data/** (for downloading the MNIST dataset).
+4. Run the following command to call the script named `mnist.py` with the config file specified through the option:
 
    ```
    python mnist.py --config=./mnist_config.yaml
@@ -40,28 +52,32 @@
 
 After training is finished, you should find four files in the **./checkpoint/mnist/** folder：
 
-- two model files that contain the trained model parameters with extension .pth
-- the config file used for running the training with extension .yaml
-- one log file that records the model performance during the training with extension .txt
-- one directroy called `mnn_net_snn_result` that stores the simulation result of the SNN reconstructed from the trained MNN
+- Two '.ph' files which contain the trained model parameters.
+- One '.yaml' file which is a copy of the config file used for running the training the model.
+- One '.txt' log file that prints the standard output during training (such as model performance).
+- One directroy called `mnn_net_snn_result` that stores the simulation result of the SNN reconstructed from the trained MNN (if enabled).
 
 ## Configure the MNN model
 
 Let's review the content of **mnist.yaml**.
-To specify the architecture of MNN, you can modify the `MODEL` section.
-The settings under `meta` provide the information about model construction.
-Currently only mlp-like architecture is available (`arch: mnn_mlp`).
-The setting `mlp_type` indicates the kind of mlp to be built. For `mnn_mlp`, the model contains one input layer, arbitrary number of hidden layers, and a linear decoder.
-You can change the widths of each layer by modifying the values under `structrue`. The setting `num_class` specifies the output dimension.
-See `mnn.models.mlp` for further details.
 
-Next, The `CRITERION` section indicate the training criterion such as the loss function.
+The `MODEL` section is for specifying the architecture of MNN.
+`meta`: meta information about model construction.
+- `arch`: specifies the model architecture. Currently only mlp-like architecture is available (`arch: mnn_mlp`).
+- `mlp_type`: indicates the kind of mlp to be built. For `mnn_mlp`, the model contains one input layer, arbitrary number of hidden layers, and a linear decoder.
+`mnn_mlp`: detailed model specification for mlp
+- `structure`: you can change the widths of each layer by modifying the values under this field.
+- `num_class`: specifies the output dimension.
+See `mnn.models.mlp` for under-the-hood details.
+
+The `CRITERION` section indicate the training criterion such as the loss function.
+`name`: the name for the loss function. Currently supports ...
+`source`: the name of the directory where the loss function is defined. 
+`arg`: input arguments to the loss function.
 The code will try to find the criterion from `source` that match the `name` and pass required `args` to it.
-I have implemented a family of criteria for MNN, see `mnn_core.nn.criterion` for further details.
+See `mnn_core.nn.criterion` for under-the-hood details.
 
 Similarly, the optimzer and data augmentation policy are defined under `OPTIMIZER` and `DATAAUG_TRAIN/VAL`, correspoding to the pytorch implementations (`torch.optim` and `torchvision.transforms` ).
-
-Alternality, you can rewrite your own functions of `MnistTrainFuncs` in the script **mnist.py**.
 
 There are some advanced options in the config file:
 
@@ -94,14 +110,22 @@ I recommend you to read the func `deploy_config()` in `utils.training_tools.gene
 We provide utility to automatically reconstruct SNN based on the trained MNN.
 A custom simulator of SNN is provided with GPU support but you may use any SNN simulator of your choice.
 
-## Customize your own MNN model
+# Customize your own MNN model
 
 (How to add custom models to the MODEL folder; details of the model class)
 
+## Custom dataset
+
+## Custom loss function
+
+## Custom model
+
+## 
+
 # Lead authors
 
-- **Zhichao Zhu** - *Chief architect and initial work* - [Zhichao Zhu](https://github.com/Acturos)
-- **Yang Qi** - *Algorithm design* - [Yang Qi](https://github.com/qiyangku)
+- **Zhichao Zhu** - *Chief Architect* - [Zhichao Zhu](https://github.com/Acturos)
+- **Yang Qi** - *Lead Algorithm Design* - [Yang Qi](https://github.com/qiyangku)
 
 # License
 
