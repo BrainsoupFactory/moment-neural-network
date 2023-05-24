@@ -114,8 +114,6 @@ A custom simulator of SNN is provided with GPU support but you may use any SNN s
 
 # Customize your own MNN model
 
-(How to add custom models to the MODEL folder; details of the model class)
-
 ## Custom dataset
 
 ## Custom loss function
