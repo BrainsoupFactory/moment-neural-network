@@ -130,3 +130,29 @@ class MnnMlp(torch.nn.Module):
         output = decoding_policy(u, cov, self.use_mean, self.use_cov, self.signal_correlation)
         return self.predict(output)
 
+class AnnMlp(torch.nn.Module):
+    def __init__(self, structure, num_class: int = 10, need_bn: bool = True, predict_bias: bool = True,
+                 activation_func='relu'):
+        super(AnnMlp, self).__init__()
+        self.mlp = torch.nn.ModuleList()
+        if len(structure) >= 2:
+            for i in range(len(structure) - 1):
+                if need_bn:
+                    self.mlp.append(torch.nn.Linear(structure[i], structure[i + 1], bias=False))
+                    self.mlp.append(torch.nn.BatchNorm1d(structure[i + 1]))
+                else:
+                    self.mlp.append(torch.nn.Linear(structure[i], structure[i + 1], bias=True))
+                if activation_func == 'gelu':
+                    self.mlp.append(torch.nn.GELU())
+                elif activation_func == 'sigmoid':
+                    self.mlp.append(torch.nn.Sigmoid())
+                else:
+                    self.mlp.append(torch.nn.ReLU())
+        else:
+            self.mlp.append(torch.nn.Identity())
+        self.predict = torch.nn.Linear(structure[-1], num_class, bias=predict_bias)
+
+    def forward(self, x):
+        for module in self.mlp:
+            x = module(x)
+        return self.predict(x)
