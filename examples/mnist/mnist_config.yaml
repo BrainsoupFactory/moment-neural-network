@@ -34,7 +34,7 @@ CRITERION:
 
 
 OPTIMIZER:
-  opt: AdamW
+  name: AdamW
   args:
     lr: 0.001
     weight_decay: 0.01

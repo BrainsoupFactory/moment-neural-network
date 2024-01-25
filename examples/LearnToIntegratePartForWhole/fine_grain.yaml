@@ -1,0 +1,50 @@
+CRITERION:
+  name: CrossEntropyOnMean
+  source: mnn_core
+DATALOADER: null
+DATASET: null
+LR_SCHEDULER: null
+MODEL:
+  backbone:
+    frozen: true
+    pretrained: true
+  meta:
+    arch: mnn_cnn
+    cnn: true
+    cnn_type: vgg16
+    mlp_type: mnn_mlp
+  mnn_mlp:
+    num_class: 200
+    predict_bias: true
+    structure:
+    - 512
+    - 1024
+    - 1024
+  pooling:
+    input_dim: 512
+    mask_cov: false
+
+OPTIMIZER:
+  args: 
+    lr: 0.001
+    weight_decay: 0.01
+  name: AdamW
+
+bs: 32
+data_dir: ./data/CUB
+dir: fine_mlp
+dtype: float
+epochs: 150
+eps: 0.1
+evaluate: false
+gpu: '0'
+local_rank: 0
+lr: 0.001
+pin_mem: true
+print_freq: 20
+rank: -1
+resume: false
+seed: null
+start_epoch: 0
+workers: 2
+world_size: 1

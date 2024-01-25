@@ -1,0 +1,57 @@
+CRITERION:
+  args:
+    is_classify: false
+    normalize: false
+    num_class: 2
+    reduction: mean
+    regular_cov: false
+    use_acos: true
+  name: SampleBasedEarthMoverLoss
+  source: mnn_core
+DATALOADER: null
+DATASET:
+  c0: 1
+  c_gain: 5
+  cmax: 0.16
+  direct_decoding: false
+  frac: 0.5
+  input_dim: 256
+  input_grid: hexagonal
+  sample_size: 10000
+  target_scaling: 1
+LR_SCHEDULER: null
+MODEL:
+  meta:
+    arch: mnn_mlp
+    cnn: true
+    cnn_type: null
+    mlp_type: mnn_mlp
+  mnn_mlp:
+    num_class: 2
+    predict_bias: false
+    predict_bias_var: false
+    structure:
+    - 254
+    - 508
+OPTIMIZER:
+  args:
+    lr: 0.001
+    weight_decay: 0.01
+  name: AdamW
+bs: 100
+data_dir: ./data/
+dataset: visual_orientation
+dir: motion_direction
+epochs: 100
+gpu: '1'
+local_rank: 0
+lr: 0.001
+pin_mem: true
+print_freq: 20
+rank: -1
+save_epoch_state: false
+seed: null
+start_epoch: 0
+trials: 1
+workers: 1
+world_size: 1

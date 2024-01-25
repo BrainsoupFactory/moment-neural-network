@@ -186,3 +186,69 @@ class GaussianSamplingPredict(torch.nn.Module):
         return 'num_class: {}, num_sample: {}, eps={}, decoding_time={}, return_pred={}, normalise={}'.format(
             self.num_class, self.num_sample, self.eps[0, 0].itme(), self.decoding_time, self.return_pred, self.normalise)
 
+
+class SampleBasedEarthMoverLoss(torch.nn.Module):
+    def __init__(self, num_class=2, num_sample=1000, eps=1e-4, beta=1., decoding_time=1. , loss_func=None, 
+    reduction='mean', regular_cov=False, add_diag=None, normalize=False, is_classify=False, alpha=0., use_acos=True, safe_scale=0.99) -> None:
+        super(SampleBasedEarthMoverLoss, self).__init__()
+        self.num_class = num_class
+        self.num_sample = num_sample
+        self.register_buffer('eps', torch.eye(num_class) * eps)
+        self.beta = beta
+        self.decoding_time = decoding_time
+        self.reduction = reduction
+        self.default_distance =torch.nn.CosineSimilarity(dim=-1)
+        self.regular_cov = regular_cov
+        self.loss_func = loss_func
+        self.normalize = normalize
+        self.use_acos = use_acos
+        self.safe_scale = safe_scale
+        
+        if add_diag is not None:
+            self.register_buffer('add_diag', torch.eye(num_class) * add_diag)
+        else:
+            self.register_buffer('add_diag', None)
+        
+        if is_classify:
+            self.target_smooth = LabelSmoothing(num_class=num_class, alpha=alpha)
+        else:
+            self.target_smooth = torch.nn.Identity()
+    
+    def extra_repr(self) -> str:
+        return 'num_class: {}, num_sample: {}, eps={}, beta={}, decoding_time={}, reduction={}, loss_func: {}'.format(
+            self.num_class, self.num_sample, self.eps[0, 0].item(), self.beta, self.decoding_time, self.reduction, self.loss_func)
+
+    def _default_cosine_loss(self, output: Tuple, target: Tensor):
+        u, cov = output
+        if self.normalize:
+            u, cov = functional.normalize_mean_cov(u, cov)
+        sample_points = torch.randn(u.size(0), self.num_sample, self.num_class, device=u.device)
+        transformed_samples = functional.gaussian_sampling_transform(sample=sample_points, u=u, cov=cov,
+                                                        eps=self.eps, decoding_time=self.decoding_time, need_expand=False)
+        transformed_samples = transformed_samples * self.beta
+        target = target.reshape(-1, 1, self.num_class).expand_as(transformed_samples)
+        distance = self.default_distance(transformed_samples, target)
+        if self.use_acos:
+            loss = torch.mean(torch.arccos(distance * self.safe_scale), dim=-1)
+        else:
+            loss = 1 - torch.mean(distance, dim=-1)
+        if self.regular_cov:
+            if self.add_diag is not None:
+                loss = loss + torch.logdet(cov + self.add_diag) / 2
+            else:
+                loss = loss + torch.log(torch.linalg.det(cov) + 1) / 2
+        if self.reduction == 'sum':
+            loss = torch.sum(loss)
+        else:
+            loss = torch.mean(loss)
+        return loss
+    
+    def forward(self, output: Tuple, target: Tensor):
+        target = self.target_smooth(target)
+        if self.loss_func is None:
+            loss = self._default_cosine_loss(output, target)
+        else:
+            loss = self.loss_func(self, output, target)
+        return loss
+
+

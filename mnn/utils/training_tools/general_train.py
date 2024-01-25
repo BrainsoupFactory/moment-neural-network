@@ -107,12 +107,12 @@ class TrainProcessCollections:
     def set_random_seed(self, seed):
         general_prepare.PrepareMethods.seed_everything(seed)
 
-    def make_model(self, model_args: dict):
-        model = general_prepare.make_model(model_args=model_args)
+    def make_model(self, args):
+        model = general_prepare.make_model(model_args=args.MODEL)
         return model
 
-    def prepare_dataloader(self, args, data_dir='./data/'):
-        train_loader, test_loader = general_prepare.prepare_dataloader(args, data_dir)
+    def prepare_dataloader(self, args):
+        train_loader, test_loader = general_prepare.prepare_dataloader(args, getattr(args, 'data_dir', './data/'))
         return train_loader, test_loader
 
     def prepare_optimizer_scheduler(self, params_group, args):
@@ -138,16 +138,40 @@ class TrainProcessCollections:
 
     def specify_params_group(self, model):
         return filter(lambda p: p.requires_grad, model.parameters())
-
+    
+    def input_preprocessing(self, data, args):
+        if getattr(args, 'flatten_input', True):
+            data = torch.flatten(data, start_dim=1)
+        data = data * getattr(args, 'scale_factor', 1.)
+        if getattr(args, 'input_prepare', None) == 'flatten_poisson':
+            cov = torch.diag_embed(torch.abs(data))
+        elif getattr(args, 'input_prepare', None) == 'poisson_no_rho':
+            cov = torch.abs(data)
+        elif getattr(args, 'input_prepare', None) == 'cov_embed':
+            cov = torch.sqrt(torch.abs(data))
+            cov = torch.einsum('b i, b j -> b i j', cov, cov)
+        else:
+            cov = None
+            
+        if getattr(args, 'background_noise', None) is not None and cov is not None:
+            if data.size() == cov.size():
+                cov = cov + torch.ones_like(cov, device=data.device) * getattr(args, 'background_noise')
+            else:
+                cov = cov + torch.eye(data.size(-1), device=data.device) * getattr(args, 'background_noise')
+        if getattr(args, 'unsqueeze_input', None) is not None:
+            data = data.unsqueeze(args.unsqueeze_input)
+            if cov is not None:
+                cov = cov.unsqueeze(args.unsqueeze_input)
+        return data, cov
+        
     def data2device(self, data, target, args):
         if args.use_cuda:
             data = data.cuda(args.local_rank, non_blocking=True)
-            target = target.cuda(args.local_rank, non_blocking=True)
-        if getattr(args, 'input_prepare', None) == 'flatten_poisson':
-            data = torch.flatten(data, start_dim=1) * getattr(args, 'scale_factor', 1.)
-            cov = torch.diag_embed(torch.abs(data))
-            if getattr(args, 'background_noise', None) is not None:
-                cov = cov + torch.eye(data.size(-1), device=data.device) * getattr(args, 'background_noise')
+            if isinstance(target, torch.Tensor):
+                target = target.cuda(args.local_rank, non_blocking=True)
+        
+        data, cov = self.input_preprocessing(data, args)
+        if cov is not None:
             return (data, cov), target
         else:
             return data, target
@@ -246,7 +270,7 @@ class TrainProcessCollections:
             if isinstance(images, tuple):
                 images = images[0]
 
-            if getattr(args, 'task_type', 'classify') == 'classify':
+            if getattr(args, 'task_type', 'classification') == 'classification':
                 acc1, = self.score_function(output, target, topk=(1, ), pred_prob=pred)
                 if args.distributed:
                     loss, acc1 = self.reduce_distributed_info(args, loss, acc1)
@@ -290,7 +314,7 @@ class TrainProcessCollections:
                     images = images[0]
                     
                 # measure accuracy and record loss
-                if getattr(args, 'task_type', 'classify') == 'classify':
+                if getattr(args, 'task_type', 'classification') == 'classification':
                     acc1, = self.score_function(output, target, topk=(1, ), pred_prob=pred)
                     if args.distributed:
                         loss, acc1 = self.reduce_distributed_info(args, loss, acc1)
@@ -305,7 +329,7 @@ class TrainProcessCollections:
             if args.local_rank == 0 and getattr(args, 'log_path', None) is not None:
                 info = 'Validation result: ' + progress.display_summary() + '\n'
                 func.RecordMethods.writing_log(args.log_path, info)
-        if getattr(args, 'task_type', 'classify') == 'classify':
+        if getattr(args, 'task_type', 'classification') == 'classification':
             return top1.avg
         else:
             return - losses.avg
@@ -446,7 +470,7 @@ def general_distributed_train_pipeline(local_rank, nprocs, args, train_func=Trai
     
 
     # Create model
-    model = train_func.make_model(args.MODEL)
+    model = train_func.make_model(args)
     loc = 'cuda:{}'.format(local_rank)
     if args.resume:
         args, model, best_acc1 = train_func.resume_model(args, model, local_rank)
@@ -460,7 +484,7 @@ def general_distributed_train_pipeline(local_rank, nprocs, args, train_func=Trai
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank)
 
     # prepare dataloader
-    train_loader, val_loader = train_func.prepare_dataloader(args, args.data_dir)
+    train_loader, val_loader = train_func.prepare_dataloader(args)
 
     # criterion, optimizer and lr_scheduler
     criterion = train_func.prepare_criterion(args).cuda(local_rank)
@@ -503,13 +527,13 @@ def general_train_pipeline(args, train_func=TrainProcessCollections):
         func.RecordMethods.record_hyper_parameter(save_path, args.save_name, **args.__dict__)
     
 
-    model = train_func.make_model(args.MODEL)
+    model = train_func.make_model(args)
     if args.resume:
         args, model, best_acc1 = train_func.resume_model(args, model, local_rank)
     if args.use_cuda:
         model.cuda(local_rank)
     # prepare dataloader
-    train_loader, val_loader = train_func.prepare_dataloader(args, args.data_dir)
+    train_loader, val_loader = train_func.prepare_dataloader(args)
 
     # criterion, optimizer and lr_scheduler
     criterion = train_func.prepare_criterion(args)
