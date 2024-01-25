@@ -2,38 +2,98 @@ import torch
 from mnn import snn, utils
 
 class MnistTrainFuncs(utils.training_tools.TrainProcessCollections):
-    # a batch of functions to support MNN training in a variety of tasks
+    """
+    The general pipeline to construct MNN for training.
+    """
     def set_random_seed(self, seed):
-        # this function can fix all random seed (numpy, pytorch) for better reproducibility
+        """
+        This function can fix all random seed (numpy, pytorch) for better reproducibility.
+        By default, the seed is None. You can configure the random seed in config.yaml by adding a new item "seed: YOU SEED".
+        Alternatively, you can just set args.seed = YOU SEED in you code before calling "utils.training_tools.general_train_pipeline()"
+        """
         return super().set_random_seed(seed)
     
     def make_model(self, model_args: dict):
-        # this func will generate model, rewrite this func for your own model.
-        return super().make_model(model_args)
+        """
+        This function will make the MNN model based on you model configuration, which is defined in config.yaml (MODEL).
+        Be free to rewrite the function for building you model.
+        """
+        model = super().make_model(model_args)
+        return model
     
     def prepare_dataloader(self, args, data_dir='./data/'):
-        # rewrite this func for your dataloader, by default it will return MNIST loader
-        return super().prepare_dataloader(args, data_dir)
+        """
+        This function will create the dataloaders for training and testing.
+        You can rewrite the function to return the dataloads for your own purpose.
+        Note that by default the directory of data should be found in the './data/' but you can modify it setting the value of args.data_dir or specify in config.yaml before training.
+        Make sure when calling 'enumerate(dataloader)', the outputs  the form of (idx, data, target).
+        """
+        train_loader, val_loader = super().prepare_dataloader(args, data_dir)
+        return train_loader, val_loader
     
     def prepare_criterion(self, args):
-        # rewrite this func for your criterion, alternatively to specify config for provided criterion. 
-        return super().prepare_criterion(args)
+        """
+        This function will create the criterion for computing loss.
+        We prepared a family of criterions for MNN (see mnn_core.nn.criterion).
+        By default, we use CrossEntropyOnMean for classification.
+        You can specify criterion by modifying the 'CRITERION' in config.yaml.
+        You can alway create you criterion by rewriting this function, as long as it can be used for computing the loss between the model outputs and the target.
+        """
+        criterion = super().prepare_criterion(args)
+        return criterion
     
     def prepare_optimizer_scheduler(self, params_group, args):
-        # rewrite this func for your optimizer and LR scheduler, by default it return AdamW (base on config) and None for sheduler
-        return super().prepare_optimizer_scheduler(params_group, args)
+        """
+        This function will create optimizer and scheduler for training.
+        By default, we use AdamW as optimizer and None for scheduler.
+        If you use a learning scheduler, it will call scheduler.step() when end the training of one epoch.
+        You can specify the optimizer in config.yaml (OPTIMIZER) or rewrite the function if you like.
+        The params_group contains the model parameters for training (see follow)
+        """
+        optimizer, scheduler = super().prepare_optimizer_scheduler(params_group, args)
+        return optimizer, scheduler
     
     def specify_params_group(self, model):
         # specify which part of model to be trained, by default the whole model is trainable
         return super().specify_params_group(model)
     
     def data2device(self, data, target, args):
-        # Send data to specify device (cpu or gpu), For MNN we return mean and cov by assuming data is Poisson rate.
-        return super().data2device(data, target, args)
+        """
+        Send data to specify device (cpu or gpu), For MNN we return mean and cov by assuming data is Poisson rate.
+        Namely, the input data is a batch of images, we flatten image and create the covariance matrix base on it.
+        The return data is a tuple (mean, cov).
+        You can rewrite the function to define the procedure of data preprocessing.
+        """
+        data, target =  super().data2device(data, target, args)
+        return data, target
     
     def clip_model_params(self, model, args):
-        # For special purpose, we want to limit model params in a specific range, by default this func does nothing.
+        """
+        For special purpose, we want to limit model params in a specific range, by default this func does nothing.
+        This function will be called at each iteration.
+        """
         return super().clip_model_params(model, args)
+    
+    def compute_model_output(self, model, inputs, args=None):
+        """
+        This function will be called during training and validation to compute the model output.
+        By default it simple be 'output = model(innputs)', where inputs are the returned data of 'data2device()' and the output is a tuple(mean, cov).
+        You can rewrite the function to define you computation pipeline. For example, for RNN you may want to gather a list of output by for loop or the internal representation of the model is necessary for task or loss function.
+        """
+        output = super().compute_model_output(model, inputs, args)
+        return output
+    
+    def compute_loss(self, output, target, criterion, model=None, args=None, inputs=None):
+        """
+        This function compute the loss.
+        By default it simply be 'loss = criterion(output, target)'.
+        The model you use, args and inputs will pass into this function in this pipeline.
+        You can modify the function for your own need.
+        For example, auto encoder requires input data for computing loss and you may want to limit model parameters by adding them into loss.
+        The returned loss will call the backward() to compute gradients.
+        """
+        loss = super().compute_loss(output, target, criterion, model, args, inputs)
+        return loss
     
     def train_one_epoch(self, train_loader, model, criterion, optimizer, epoch, args):
         # A general pipeline for training
@@ -44,7 +104,13 @@ class MnistTrainFuncs(utils.training_tools.TrainProcessCollections):
         return super().validate(val_loader, model, criterion, args, epoch)
     
     def score_function(self, output, target, *args, **kwargs):
-        # Decide the score of model performance in classify task. In regression we use loss.
+        """
+        Decide the score of model performance in classify task. 
+        In regression this function will ignore.
+        The task type is determined by args.task_type.
+        You can specify it in config.yaml or change it before pass args into pipeline.
+        By default, args.task_type = 'classify'
+        """
         return super().score_function(output, target, *args, **kwargs)
     
 def train_mnist(args):
