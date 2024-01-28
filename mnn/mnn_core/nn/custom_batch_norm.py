@@ -31,22 +31,29 @@ def _batch_norm_for_train(u: Tensor, cov: Tensor, gamma: Tensor, beta: Optional[
                           momentum: float = 0.9, eps: float = 1e-5):
 
     u_var, u_mean = torch.var_mean(u, dim=0, keepdim=True)
-    var = torch.diagonal(cov, dim1=-1, dim2=-2)
+    if cov.dim() > u.dim():
+        var = torch.diagonal(cov, dim1=-1, dim2=-2)
+    else:
+        var = cov
     var = torch.mean(var, dim=0, keepdim=True)
     if mean_variance is not None:
         mean_variance = _track_mean_variance(var.reshape(mean_variance.shape), mean_variance, momentum)
     u_var = u_var + var
 
-    running_mean, running_var = _track_running_state(u_mean.reshape(running_mean.shape), u_var.reshape(running_var.shape),
-                                                     running_mean, running_var, momentum)
+    running_mean, running_var = _track_running_state(u_mean.reshape(running_mean.shape), u_var.reshape(running_var.shape), running_mean, running_var, momentum)
 
     norm_weight = _compute_weight(gamma, u_var, eps)
     u_norm = (u - u_mean) * norm_weight
     if beta is not None:
         u_norm = u_norm + beta
-    cov_norm = cov * torch.matmul(norm_weight.unsqueeze(-1), norm_weight.unsqueeze(-2))
-    if beta_var is not None:
-        cov_norm = cov_norm + functional.var2cov(beta_var)
+    if cov.dim() > u.dim():
+        cov_norm = cov * torch.matmul(norm_weight.unsqueeze(-1), norm_weight.unsqueeze(-2))
+        if beta_var is not None:
+            cov_norm = cov_norm + functional.var2cov(beta_var)
+    else:
+        cov_norm = cov * norm_weight * norm_weight
+        if beta_var is not None:
+            cov_norm = cov_norm + functional.F.softplus(beta_var)
     return u_norm, cov_norm, running_mean, running_var, mean_variance
 
 
@@ -55,9 +62,14 @@ def _batch_norm_for_test(u, cov, gamma, beta, running_mean, running_var, beta_va
     u_norm = (u - running_mean) * norm_weight
     if beta is not None:
         u_norm = u_norm + beta
-    cov_norm = cov * torch.matmul(norm_weight.unsqueeze(-1), norm_weight.unsqueeze(-2))
-    if beta_var is not None:
-        cov_norm = cov_norm + functional.var2cov(beta_var)
+    if cov.dim() > u.dim():
+        cov_norm = cov * torch.matmul(norm_weight.unsqueeze(-1), norm_weight.unsqueeze(-2))
+        if beta_var is not None:
+            cov_norm = cov_norm + functional.var2cov(beta_var)
+    else:
+        cov_norm = cov * norm_weight * norm_weight
+        if beta_var is not None:
+            cov_norm = cov_norm + functional.F.softplus(beta_var)
     return u_norm, cov_norm
 
 
@@ -99,12 +111,10 @@ class CustomBatchNorm1D(torch.nn.Module):
         u, cov = functional.parse_input(args)
         if self.training:
             u, cov, self.running_mean, self.running_var, self.mean_variance = _batch_norm_for_train(u, cov, self.weight, self.bias,
-                                                                                self.running_mean, self.running_var, self.mean_variance,
-                                                                                self.bias_var, self.momentum, self.eps,
-                                                                                )
+            self.running_mean, self.running_var, self.mean_variance,
+            self.bias_var, self.momentum, self.eps,)
         else:
-            u, cov = _batch_norm_for_test(u, cov, self.weight, self.bias, self.running_mean, self.running_var,
-                                          self.bias_var, self.eps)
+            u, cov = _batch_norm_for_test(u, cov, self.weight, self.bias, self.running_mean, self.running_var, self.bias_var, self.eps)
         return u, cov
 
     def extra_repr(self) -> str:

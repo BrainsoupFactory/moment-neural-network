@@ -21,14 +21,14 @@ class MnistTrainFuncs(utils.training_tools.TrainProcessCollections):
         model = super().make_model(model_args)
         return model
     
-    def prepare_dataloader(self, args, data_dir='./data/'):
+    def prepare_dataloader(self, args):
         """
         This function will create the dataloaders for training and testing.
         You can rewrite the function to return the dataloads for your own purpose.
         Note that by default the directory of data should be found in the './data/' but you can modify it setting the value of args.data_dir or specify in config.yaml before training.
         Make sure when calling 'enumerate(dataloader)', the outputs  the form of (idx, data, target).
         """
-        train_loader, val_loader = super().prepare_dataloader(args, data_dir)
+        train_loader, val_loader = super().prepare_dataloader(args)
         return train_loader, val_loader
     
     def prepare_criterion(self, args):

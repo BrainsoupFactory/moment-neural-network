@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 import torch
-import numpy as np
-import analysis
 
 from torch import Tensor
 from .. import utils
@@ -175,12 +173,27 @@ class MnnSnnValidate:
         data = self.mnn(data)
         pred = self.predict_policy(data)
         return data, pred, target
+
+    def modify_value_by_condition(self, data, condition):
+        u, cov = data
+        if 'mask_mean' in condition:
+            u = torch.zeros_like(u)
+        elif 'shuffle_cov' in condition:
+            cov = cov * torch.eye(cov.size(-1), device=cov.device)
+        elif 'corr_only' in condition:
+            u = torch.zeros_like(u)
+            _, rho = mnn_core.nn.functional.compute_correlation(cov)
+            #std = torch.ones_like(std)
+            cov = rho
+        elif 'mean_only' in condition:
+            cov = torch.zeros_like(cov)
+        return u, cov
     
     def prepare_inputs(self, idx):
         data, _ = self.dataset[idx]
         (mean, cov), _ = self.train_funcs.data2device(data, None, self.args)
         condition = getattr(self.args, 'cov_condition', 'full')
-        mean, cov = analysis.modify_value_by_condition((mean, cov), condition)
+        mean, cov = self.modify_value_by_condition((mean, cov), condition)
         input_neuron = mean.size()[-1]
         if self.input_type == 'gaussian':
             std, rho = mnn_core.nn.functional.compute_correlation(cov)
