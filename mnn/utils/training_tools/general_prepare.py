@@ -55,7 +55,7 @@ class PrepareMethods:
 def make_model(model_args: dict):
     meta_info: dict = model_args['meta']
     if meta_info.get('arch', '') == 'mnn_mlp':
-        model = make_mnn_mlp_model(model_args[meta_info['mlp_type']], meta_info['mlp_type'])
+        model = make_mnn_mlp_model(model_args[meta_info['mlp_type']], meta_info['mlp_type']) 
     else:
         model = None
     return model
@@ -75,7 +75,7 @@ def make_mnn_mlp_model(model_args, model_type='mnn_mlp'):
     elif model_type == 'snn_mlp':
         mlp_net = models.SnnMlp(**model_args)
     else:
-        mlp_net = None
+        mlp_net = models.MnnMlpNoRho(**model_args)
     return mlp_net
 
 def freeze_parameters(modules):
@@ -150,14 +150,14 @@ def prepare_dataloader(args, data_dir='./data/'):
 
 def make_optimizer(params_group, args):
     if args.distributed and zero_redundancy_optimizer_available:
-        optimizer = ZeroRedundancyOptimizer(params_group, getattr(torch.optim, args.OPTIMIZER['opt']),
+        optimizer = ZeroRedundancyOptimizer(params_group, getattr(torch.optim, args.OPTIMIZER['name']),
                                             **args.OPTIMIZER['args'])
     else:
-        optimizer = getattr(torch.optim, args.OPTIMIZER['opt'])(params_group, **args.OPTIMIZER['args'])
+        optimizer = getattr(torch.optim, args.OPTIMIZER['name'])(params_group, **args.OPTIMIZER['args'])
     return optimizer
 
 def make_schedule(optimizer, args):
-    scheduler = getattr(torch.optim.lr_scheduler, args.LR_SCHEDULER['opt'])(optimizer=optimizer,  **args.LR_SCHEDULER['opt'])
+    scheduler = getattr(torch.optim.lr_scheduler, args.LR_SCHEDULER['name'])(optimizer=optimizer,  **args.LR_SCHEDULER['name'])
     return scheduler
 
 def prepare_optimizer_scheduler(params_group, args):
@@ -229,9 +229,20 @@ def prepare_args(parser):
         args.use_cuda = False
     return args
 
-def model_generator(checkpoint_path, save_name, to_cuda=False, resume_model=True, local_rank=0, resume_best=False):
-    config = read_yaml_config('{}{}_config.yaml'.format(checkpoint_path, save_name))
-    model = make_model(config['MODEL'])
+class TempArgs:
+    def __init__(self) -> None:
+        pass
+    
+def model_generator(checkpoint_path, save_name, to_cuda=False, resume_model=True, local_rank=0, resume_best=False, make_func=None):
+    if make_func is None:
+        config = read_yaml_config('{}{}_config.yaml'.format(checkpoint_path, save_name))
+        model = make_model(config['MODEL'])
+    else:
+        args = TempArgs()
+        args.config = '{}{}_config.yaml'.format(checkpoint_path, save_name)
+        set_config2args(args)
+        model = make_func.make_model(args)
+        
     if resume_model:
         if resume_best:
             ckpt = torch.load('{}{}_best_model.pth'.format(checkpoint_path, save_name), map_location='cpu')

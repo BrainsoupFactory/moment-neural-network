@@ -1,32 +1,15 @@
 # -*- coding: utf-8 -*-
 import torch
-import numpy as np
-from .. import mnn_core
+
 from torch import Tensor
 from .. import utils
 from . import base, mnn2snn
-
-def modify_value_by_condition(data, condition):
-    u, cov = data
-    if 'mask_mean' in condition:
-        u = torch.zeros_like(u)
-    elif 'shuffle_cov' in condition:
-        cov = cov * torch.eye(cov.size(-1), device=cov.device)
-    elif 'corr_only' in condition:
-        u = torch.zeros_like(u)
-        _, rho = mnn_core.nn.functional.compute_correlation(cov)
-        #std = torch.ones_like(std)
-        cov = rho
-    elif 'mean_only' in condition:
-        cov = torch.zeros_like(cov)
-    return u, cov
+from .. import mnn_core
 
 class MnnSnnValidate:
     def __init__(self, args, running_time=20, dt=1e-2, num_trials=100, monitor_size=None, 
-                pregenerate=False, resume_best=False, train=False, init_vol=None, alias='', input_type='gaussian',**kwargs) -> None:
+                pregenerate=False, resume_best=True, train=False, init_vol=None, alias='', input_type='gaussian', train_funcs=None, unsqueeze_input=0, align_batch_size=True, **kwargs) -> None:
         
-        args = self.resume_config(args=args, resume_best=resume_best)
-        self.args = args
         self.running_time = running_time
         self.train = train
 
@@ -40,9 +23,20 @@ class MnnSnnValidate:
         self.alias = alias
         self.prefix = 'run{}_dt{}'.format(running_time, dt)
         self.input_type = input_type
+        self.unsqueeze_input = unsqueeze_input
+        
+        if train_funcs is None:
+            self.train_funcs = utils.training_tools.general_train.TrainProcessCollections()
+        else:
+            self.train_funcs = train_funcs
 
         for key, value in kwargs.items():
             setattr(self, key, value)
+        
+        args = self.resume_config(args=args, resume_best=resume_best)
+        self.args = args
+        if align_batch_size:
+            self.args.bs = self.num_trials
 
         self.prepare_dump_dir()
         self.generate_dataset()
@@ -54,10 +48,14 @@ class MnnSnnValidate:
 
     def resume_config(self, args, resume_best):
         save_path = getattr(args, 'dump_path', './checkpoint/') + args.dir + '/'
-        args.resume_best = resume_best
         args.save_path = save_path
         args.config = save_path + args.save_name + '_config.yaml'
         args = utils.training_tools.set_config2args(args)
+        args.resume_best = resume_best
+        if getattr(self, 'local_rank', None) is not None:
+            args.local_rank = self.local_rank
+        args.use_cuda = getattr(args, 'use_cuda', True)
+        args.unsqueeze_input = self.unsqueeze_input
         return args
     
     def reset(self):
@@ -80,11 +78,11 @@ class MnnSnnValidate:
         utils.training_tools.RecordMethods.make_dir(save_path)
 
     def generate_dataset(self):
-        train_set, test_set = utils.training_tools.make_image_fold_dataset(self.args)
+        train_loader, test_loader = self.train_funcs.prepare_dataloader(self.args)
         if self.train:
-            setattr(self, 'dataset', train_set)
+            setattr(self, 'dataset', train_loader.dataset)
         else:
-            setattr(self, 'dataset', test_set)
+            setattr(self, 'dataset', test_loader.dataset)
     
     def generate_model(self):
         mnn_model = self.generate_mnn_model()
@@ -102,16 +100,18 @@ class MnnSnnValidate:
         model = utils.training_tools.model_generator(self.args.save_path, 
         self.args.save_name, to_cuda=True, 
         resume_model=True, resume_best=self.args.resume_best, 
-        local_rank=self.args.local_rank)
+        local_rank=self.args.local_rank, make_func=self.train_funcs)
         return model
     
     def generate_snn_model(self):
         model_type = self.args.MODEL['meta']['mlp_type']
         model_args = self.args.MODEL[model_type]
         if model_type == 'snn_mlp':
-            transformed = mnn2snn.SnnMlpTrans(**model_args)
+            model = getattr(self, 'SNN_MLP', mnn2snn.SnnMlpTrans)
+            transformed = model(**model_args)
         else:
-            transformed = mnn2snn.MnnMlpTrans(**model_args)
+            model = getattr(self, 'MNN_MLP', mnn2snn.MnnMlpTrans)
+            transformed = model(**model_args)
         return transformed
 
     def data2cuda(self, data):
@@ -164,23 +164,36 @@ class MnnSnnValidate:
         else:
             mean, _ = data
         pred = torch.max(mean.reshape(1, -1), dim=-1)[-1]
-        return pred
+        return pred.cpu()
     
     @torch.inference_mode()
     def mnn_validate_one_sample(self, idx):
-        (mean, cov), target = self.dataset[idx]
-        mean = self.data2cuda(mean.unsqueeze(0))
-        cov = self.data2cuda(cov.unsqueeze(0))
-        mean, cov = self.mnn((mean, cov))
-        pred = self.predict_policy((mean, cov))
-        return mean, cov, pred, target
+        data, target = self.dataset[idx]
+        data, target = self.train_funcs.data2device(data,target, self.args)
+        data = self.mnn(data)
+        pred = self.predict_policy(data)
+        return data, pred, target
+
+    def modify_value_by_condition(self, data, condition):
+        u, cov = data
+        if 'mask_mean' in condition:
+            u = torch.zeros_like(u)
+        elif 'shuffle_cov' in condition:
+            cov = cov * torch.eye(cov.size(-1), device=cov.device)
+        elif 'corr_only' in condition:
+            u = torch.zeros_like(u)
+            _, rho = mnn_core.nn.functional.compute_correlation(cov)
+            #std = torch.ones_like(std)
+            cov = rho
+        elif 'mean_only' in condition:
+            cov = torch.zeros_like(cov)
+        return u, cov
     
     def prepare_inputs(self, idx):
-        (mean, cov), _ = self.dataset[idx]
+        data, _ = self.dataset[idx]
+        (mean, cov), _ = self.train_funcs.data2device(data, None, self.args)
         condition = getattr(self.args, 'cov_condition', 'full')
-        mean = self.data2cuda(mean)
-        cov = self.data2cuda(cov)
-        mean, cov = modify_value_by_condition((mean, cov), condition)
+        mean, cov = self.modify_value_by_condition((mean, cov), condition)
         input_neuron = mean.size()[-1]
         if self.input_type == 'gaussian':
             std, rho = mnn_core.nn.functional.compute_correlation(cov)
@@ -202,8 +215,6 @@ class MnnSnnValidate:
         inputs = self.prepare_inputs(idx)
         for _ in range(self.num_steps):
             x = inputs()
-            if getattr(self.args, 'background_noise', None) is not None:
-                x = x + torch.randn_like(x) * self.args.background_noise * np.sqrt(self.dt)
             _ = self.snn(x)
         if record:
             if dump_spike_train:
@@ -211,19 +222,19 @@ class MnnSnnValidate:
             self.snn.spike_statistic()  
     
     @torch.inference_mode()
-    def validate_one_sample(self, idx, do_reset=False, print_log=False, **kwargs):
+    def validate_one_sample(self, idx, do_reset=True, dump_spike_train=True, record=True, print_log=True, **kwargs):
         if do_reset:
             self.reset()
         else:
             self.custom_reset()
-        mnn_mean, mnn_cov, mnn_pred, target = self.mnn_validate_one_sample(idx)
-        self.run_one_simulation(idx, **kwargs)
-        snn_mean, snn_cov = self.snn.make_predict()
-        pred = self.predict_policy((snn_mean, snn_cov))
+        mnn_outputs, mnn_pred, target = self.mnn_validate_one_sample(idx)
+        self.run_one_simulation(idx, record=record, dump_spike_train=dump_spike_train, **kwargs)
+        snn_outputs = self.snn.make_predict()
+        pred = self.predict_policy(snn_outputs)
         if print_log:
-            print('{}, Img idx: {}, target: {}, pred: {}'.format(self.dataset, idx, target, pred))
-        self.save_result(idx=idx,mnn_output=(mnn_mean, mnn_cov, mnn_pred), target=target,
-                         snn_output=(snn_mean, snn_cov, pred), running_time=self.running_time, dt=self.dt, **kwargs) 
+            print('{}, Img idx: {}, target: {}, pred: {}'.format('train set' if self.train else 'test set', idx, target, pred))
+        self.save_result(idx=idx,mnn_output=(mnn_outputs, mnn_pred), target=target,
+                         snn_output=(snn_outputs, pred), running_time=self.running_time, dt=self.dt, **kwargs) 
 
 def sample_poisson_spike(freqs, dt, num_neuron, num_steps, device='cpu', dtype=torch.float):
     num = base.sample_size(num_neuron, num_steps)

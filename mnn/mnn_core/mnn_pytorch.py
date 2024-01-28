@@ -105,6 +105,25 @@ class MnnActivationNoRho(torch.autograd.Function):
         grad_std = mean_grad * mean_grad_std + std_grad * std_grad_std
         return grad_mean, grad_std
 
+class ConstantCurrentActivateFunc(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx: Any, current, vol_th=20, L=0.05, t_ref=5.) -> Any:
+        ctx.vol_th = vol_th
+        threshold = vol_th * L
+        ctx.threshold = threshold
+        idx = torch.gt(current, threshold)
+        output = torch.zeros_like(current)
+        output[idx] = 1 / (t_ref  - 1/L * torch.log(1 - threshold / current[idx]))
+        ctx.save_for_backward(current[idx],output[idx], idx)
+        return output
+    
+    @staticmethod
+    def backward(ctx: Any, grad) -> Any:
+        inputs, output, idx = ctx.saved_tensors
+        output_grad = torch.zeros_like(grad)
+        output_grad[idx] = ctx.vol_th * output * output / inputs / (inputs - ctx.threshold) * grad[idx]
+        return output_grad, None, None, None
+    
 def get_core_attr(key: str):
     global mnn_core_func
     return getattr(mnn_core_func, key)
@@ -120,3 +139,4 @@ def reset_core_attr():
 
 mnn_activate_trio = MnnActivateTrio.apply
 mnn_activate_no_rho = MnnActivationNoRho.apply
+constant_current_activate_func = ConstantCurrentActivateFunc.apply

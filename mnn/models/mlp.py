@@ -130,3 +130,81 @@ class MnnMlp(torch.nn.Module):
         output = decoding_policy(u, cov, self.use_mean, self.use_cov, self.signal_correlation)
         return self.predict(output)
 
+class AnnMlp(torch.nn.Module):
+    def __init__(self, structure, num_class: int = 10, need_bn: bool = True, predict_bias: bool = True,
+                 activation_func='relu'):
+        super(AnnMlp, self).__init__()
+        self.mlp = torch.nn.ModuleList()
+        if len(structure) >= 2:
+            for i in range(len(structure) - 1):
+                if need_bn:
+                    self.mlp.append(torch.nn.Linear(structure[i], structure[i + 1], bias=False))
+                    self.mlp.append(torch.nn.BatchNorm1d(structure[i + 1]))
+                else:
+                    self.mlp.append(torch.nn.Linear(structure[i], structure[i + 1], bias=True))
+                if activation_func == 'gelu':
+                    self.mlp.append(torch.nn.GELU())
+                elif activation_func == 'sigmoid':
+                    self.mlp.append(torch.nn.Sigmoid())
+                else:
+                    self.mlp.append(torch.nn.ReLU())
+        else:
+            self.mlp.append(torch.nn.Identity())
+        self.predict = torch.nn.Linear(structure[-1], num_class, bias=predict_bias)
+
+    def forward(self, x):
+        for module in self.mlp:
+            x = module(x)
+        return self.predict(x)
+    
+
+class MnnMlpNoRho(torch.nn.Module):
+    def __init__(self, structure, num_class: int = 10, bn_bias_var: bool = False, predict_bias: bool = False, predict_bias_var: bool = False, ln_bias: bool = False, ln_bias_var: bool = False, record_bn_mean_var=False, special_init: bool = True, momentum: float = 0.9, eps: float = 1e-5) -> None:
+        super().__init__()
+        mlp = []
+        for i in range(len(structure) - 1):
+            mlp.append(mnn_core.nn.LinearNoRho(structure[i], structure[i + 1], bias=ln_bias, bias_var=ln_bias_var))
+            mlp.append(mnn_core.nn.CustomBatchNorm1D(structure[i+1], eps=eps, momentum=momentum, bias_var=bn_bias_var, special_init=special_init, record_mean_var=record_bn_mean_var))
+            mlp.append(mnn_core.nn.OriginMnnActivation())
+        self.mlp = torch.nn.Sequential(*mlp)
+        
+        self.predict = mnn_core.nn.LinearNoRho(structure[-1], num_class, predict_bias, predict_bias_var)
+    
+    def forward(self, *args):
+        u, cov = mnn_core.nn.functional.parse_input(args)
+        u, cov = self.mlp((u, cov))
+        u, cov = self.predict(u, cov)
+        return u, cov
+    
+
+class MnnMlpMeanOnly(torch.nn.Module):
+    def __init__(self, structure, num_class: int = 10, predict_bias: bool = True, momentum: float = 0.9, eps: float = 0.00001, ln_bias=False,  V_th: float = 20., L: float = 0.05, T_ref: float = 5.0, bn_init=True)  -> None:
+        super().__init__()
+        self.structure = structure
+        self.num_class = num_class
+        self.predict_bias = predict_bias
+        self.momentum = momentum
+        self.eps = eps
+        self.ln_bias = ln_bias
+        self.V_th = V_th
+        self.L = L
+        self.T_ref = T_ref
+        mlp = []
+        for i in range(len(structure) - 1):
+            mlp += [
+                torch.nn.Linear(structure[i], structure[i+1], bias=ln_bias),
+                torch.nn.BatchNorm1d(structure[i+1], eps=eps, momentum=momentum),
+                mnn_core.nn.ConstantCurrentActivation(V_th=V_th, L=L, T_ref=T_ref)
+            ]
+        self.mlp = torch.nn.Sequential(*mlp)
+        self.predict = torch.nn.Linear(structure[-1], num_class, bias=predict_bias)
+        if bn_init:
+            for m in self.modules():
+                if isinstance(m, torch.nn.BatchNorm1d):
+                    m.weight.data.fill_(2.5)
+                    m.bias.data.fill_(2.5)
+    
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.mlp(x)
+        x = self.predict(x)
+        return x
