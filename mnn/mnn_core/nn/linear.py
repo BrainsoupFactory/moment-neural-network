@@ -83,52 +83,48 @@ class LinearDuo(torch.nn.Module):
 
 
 class LinearNoRho(torch.nn.Module):
-    def __init__(self, in_features: int, out_features: int, bias_mean: bool = False, bias_std: bool = False) -> None:
+    def __init__(self, in_features: int, out_features: int, bias: bool = False, bias_var: bool = False) -> None:
         super(LinearNoRho, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.weight = Parameter(torch.Tensor(out_features, in_features))
 
-        if bias_mean:
-            self.bias_mean = Parameter(torch.Tensor(out_features))
-
+        if bias:
+            self.bias = Parameter(torch.Tensor(out_features))
         else:
-            self.register_parameter('bias_mean', None)
+            self.register_parameter('bias', None)
 
-        if bias_std:
-            self.bias_std = Parameter(torch.Tensor(out_features))
-
+        if bias_var:
+            self.bias_var = Parameter(torch.Tensor(out_features))
         else:
-            self.register_parameter('bias_std', None)
+            self.register_parameter('bias_var', None)
 
         self.reset_parameters()
 
     def reset_parameters(self):
         init.kaiming_uniform_(self.weight, a=math.sqrt(5))
-        if self.bias_mean is not None:
+        if self.bias is not None:
             fan_in, _ = init._calculate_fan_in_and_fan_out(self.weight)
             bound = 1 / math.sqrt(fan_in)
-            init.uniform_(self.bias_mean, -bound, bound)
+            init.uniform_(self.bias, -bound, bound)
 
-            if self.bias_std is not None:
-                init.uniform_(self.bias_std, 0, bound)
+            if self.bias_var is not None:
+                init.uniform_(self.bias_var, 0, bound)
 
     def forward(self, *args) -> Tuple[Tensor, Tensor]:
         u, s = functional.parse_input(args)
-        out_u = F.linear(u, self.weight, self.bias_mean)
-        if self.bias_std is None:
-            out_s = F.linear(torch.pow(s, 2), torch.pow(self.weight, 2), self.bias_std)
+        out_u = F.linear(u, self.weight, self.bias)
+        if self.bias_var is None:
+            out_s = F.linear(s, torch.pow(self.weight, 2), self.bias_var)
         else:
-            out_s = F.linear(torch.pow(s, 2), torch.pow(self.weight, 2), torch.pow(self.bias_std, 2))
-
-        out_s = torch.sqrt(out_s)
+            out_s = F.linear(s, torch.pow(self.weight, 2), F.softplus(self.bias_var))
         return out_u, out_s
 
     def extra_repr(self) -> str:
-        return 'in_features: {}, out_features: {}, bias_mean: {}, bias_std: {}'.format(
-            self.in_features, self.out_features, self.bias_mean is not None, self.bias_std is not None)
-
+        return 'in_features: {}, out_features: {}, bias: {}, bias_var: {}'.format(
+            self.in_features, self.out_features, self.bias is not None, self.bias_var is not None)
 
 class Identity(torch.nn.Module):
     def forward(self, *args):
         return args
+

@@ -9,7 +9,8 @@ class OriginMnnActivation(torch.nn.Module):
 
     def forward(self, *args) -> Tuple[Tensor, Tensor]:
         u, cov = functional.parse_input(args)
-        if u.size(-1) != 1:
+        if u.size(-1) != 1 and cov.dim() > u.dim():
+            # Detect the case when cov is variance only, without correlation structure
             s, r = functional.compute_correlation(cov)
             u, s, r = mnn_activate_trio(u, s, r)
             cov = functional.compute_covariance(s, r)

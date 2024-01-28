@@ -55,7 +55,7 @@ class PrepareMethods:
 def make_model(model_args: dict):
     meta_info: dict = model_args['meta']
     if meta_info.get('arch', '') == 'mnn_mlp':
-        model = make_mnn_mlp_model(model_args[meta_info['mlp_type']], meta_info['mlp_type'])
+        model = make_mnn_mlp_model(model_args[meta_info['mlp_type']], meta_info['mlp_type']) 
     else:
         model = None
     return model
@@ -75,7 +75,7 @@ def make_mnn_mlp_model(model_args, model_type='mnn_mlp'):
     elif model_type == 'snn_mlp':
         mlp_net = models.SnnMlp(**model_args)
     else:
-        mlp_net = None
+        mlp_net = models.MnnMlpNoRho(**model_args)
     return mlp_net
 
 def freeze_parameters(modules):
