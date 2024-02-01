@@ -13,41 +13,37 @@ from projects.crit.activation import MnnActivationNoRho
 
 # model definition
 class MLP_static_recurrent(torch.nn.Module):
-    def __init__(self, input_size, hidden_layer_size, output_size, cache = False):
+    def __init__(self, input_size, hidden_layer_size, output_size, cache = False, config = None):
         super(MLP_static_recurrent, self).__init__()
         
         feedforward = LinearNoRho(input_size, hidden_layer_size)
         # TODO: compare removing connection to inhibitory neurons
 
-        # TODO: compare adding batchnorm
         logging.info('Initializing batchnorm to feedforward layer...')
         bn = BatchNorm1dNoRho(hidden_layer_size)
         bn.bn_mean.weight.data.fill_(1.0)
         bn.bn_mean.bias.data.fill_(0.0) #set external current to 0 since we already have a background input
 
         logging.info('Initializing static recurrent layers...')
-        config = gen_config(N=hidden_layer_size, ie_ratio=4.0, bg_rate=15.0)
-        config['conn_prob'] = 0.2 # double default value
+        
+        if config==None:
+            logging.info('No config specified for static_reurrent_layer. Generating default config...')
+            config = gen_config(N=hidden_layer_size, ie_ratio=4.0, bg_rate=20.0)
+            
         W = gen_synaptic_weight(config)
-        logging.debug('W shape = {}'.format( W.shape))        
+        logging.debug('W shape = {}'.format( W.shape))
         static_recurrent = StaticRecurrentLayer(W, config)
         
         # TODO: compare removing readout from inhibitory neurons 
         read_out = LinearNoRho(hidden_layer_size, output_size)
         
         self.layers = torch.nn.ModuleList([feedforward, bn, static_recurrent, read_out])
-        
-#        for i in range(len(self.layers)-1): #initialization for batchnorm
-#            self.layers[i].bn.bn_mean.weight.data.fill_(1.0)
-#            self.layers[i].bn.bn_mean.bias.data.fill_(0.0)
-#        self.layers[0].bn.bn_mean.eps = 1.0 #set eps in the first layer to 1 (as the batch variance is 0 for mu)
-        
+
         self.cache = cache
         self.cache_u = []
         self.cache_s = []
         self.cache_rho = []
-            #self.layers[i].bn.ext_std.data.fill_(0) #set initial values all to 0
-            #init.uniform_(self.layers[i].bn.ext_std, 1, 3) #actually default was pretty good
+
         return
 
     def forward(self, u, s):
@@ -71,6 +67,7 @@ if __name__=='__main__':
     logging.basicConfig(level=logging.DEBUG) #this prints debug messages
     
 
+
     input_size = 100
     hidden_size = 1250
     output_size = 10
@@ -79,6 +76,9 @@ if __name__=='__main__':
     u = torch.rand( batchsize, input_size)
     s = torch.rand( batchsize, input_size)
 
-    model = MLP_static_recurrent(100,1250,10)
+    #model = MLP_static_recurrent(input_size,hidden_size,output_size)
+    config = gen_config(hidden_size, 4.0 , 20)    
+    model = MLP_static_recurrent(input_size, hidden_size, output_size, config=config)
+    
     model.forward(u,s)
 
