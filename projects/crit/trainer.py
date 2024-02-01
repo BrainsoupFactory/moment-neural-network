@@ -1,9 +1,11 @@
 import torch
-import time, json, logging
+import time, json, logging, os
 import numpy as np
 from mnn.utils.dataloaders.mnist_loader import classic_mnist_loader
 from mnn.mnn_core.nn.criterion import CrossEntropyOnMean
 from projects.crit.model import MLP_static_recurrent
+from projects.crit.static_recurrent_layer import gen_config
+
 #from projects.crit.model_ann import MLP_static_recurrent
 import torch.nn as nn
 from torchvision import transforms
@@ -31,10 +33,10 @@ class trainer_MLP_static_recurrent_mnist():
         
         input_size = config['input_size']
         output_size = config['output_size']
-        hidden_layer_size = config['hidden_layer_size']
+        hidden_layer_size = config['hidden_layer_config']['NE']+config['hidden_layer_config']['NI']
         
         logging.info('Initializing model...')
-        model = MLP_static_recurrent(input_size,hidden_layer_size,output_size)
+        model = MLP_static_recurrent(input_size,hidden_layer_size,output_size, config=config['hidden_layer_config'])
         
         logging.info('Initializing dataloader...')
         train_dataloader, validation_dataloader = classic_mnist_loader(data_dir = './datasets/', train_batch=batch_size, test_batch=batch_size,  \
@@ -71,7 +73,6 @@ class trainer_MLP_static_recurrent_mnist():
         t0 = time.perf_counter()
         batch_count = 0 #count the number of minibatches
 
-        # TODO: training
         for epoch in range(num_epoch):            
             model.train()
             logging.info('Running epoch {}'.format(epoch))
@@ -159,32 +160,44 @@ class trainer_MLP_static_recurrent_mnist():
         return model
 
 if __name__ == "__main__":    
+    # TODO: integrate trainer config and model config
+    hidden_layer_config = gen_config(N=12500, ie_ratio=3.0, bg_rate=20.0)
 
-    config = {'sample_size': None,
+    trainer_config = {'sample_size': None,
               'batch_size': 100,
-              'num_epoch': 1,
+              'num_epoch': 15,
               'lr': 0.001,
               'momentum': 0.9,
               'optimizer_name': 'AdamW',
               'num_hidden_layers': None,
               'input_size': 784,
               'output_size': 10,
-              'hidden_layer_size': 1250,  #!!!!!!! small size for testing code
               'trial_id': int(time.time()),
-              'save_dir': './projects/crit/runs/',
+              'save_dir': './projects/crit/runs/mnn_static_rec/',
               'dataset_name': None,              
               'seed': None,
               'debug': False, # cache all intermediate outputs & weights. WARNING: consumes large memory
               'max_grad_norm': None, # gradient clipping. set to None to turn off
-              'max_grad_value': None #may better log it and see if there is any outliers
+              'max_grad_value': None, #may better log it and see if there is any outliers
+              'hidden_layer_config': hidden_layer_config, 
         }
     
-    torch.cuda.set_device(-1)
+    torch.cuda.set_device(1)
     logging.basicConfig(level=logging.INFO) #this prints debug messages
+
+    model = trainer_MLP_static_recurrent_mnist.train(trainer_config)    
+    file_name = 'N{}_ie_ratio{}_bg_rate{}_{}'.format(hidden_layer_config['NE']+hidden_layer_config['NI'], hidden_layer_config['ie_ratio'], hidden_layer_config['bg_rate'], trainer_config['trial_id'])
     
-    model = trainer_MLP_static_recurrent_mnist.train(config)    
-    file_name = config['trial_id']
-    
-    torch.save(model.checkpoint, config['save_dir']+'{}.pt'.format(file_name) ) #save result by time stamp
-    with open(config['save_dir']+'{}_config.json'.format(file_name),'w') as f:
-        json.dump(config,f)
+    if not os.path.exists(trainer_config['save_dir']):
+        os.makedirs(trainer_config['save_dir'])
+    torch.save(model.checkpoint, trainer_config['save_dir']+file_name+'.pt') 
+    with open(trainer_config['save_dir']+'{}_config.json'.format(file_name),'w') as f:
+        json.dump(trainer_config,f)
+
+# TODO: [priority] train one network for sufficient number of epochs e.g. 15 and verify its properties
+# 1. how much does bias current stats change after training? (this determines if the resting state stays critical)
+# 2. how much is the feedforward input current, relative to background current?
+# 3. how close or far away the network is to criticality during tasks?
+# TODO: clean up junk code during debugging 
+# TODO: centralize config file for reproducibility. dictionary of dictionary allowed.
+# TODO: test code with small network before systematic dispatch
