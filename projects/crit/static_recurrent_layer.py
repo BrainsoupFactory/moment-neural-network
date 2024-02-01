@@ -1,14 +1,14 @@
 import torch
 import torch.nn as nn
-from mnn.mnn_core import mnn_activate_no_rho #import moment activation
-# TODO:issue mnn_activate_no_rho uses var instead of std!!! inconsistency?
+#from mnn.mnn_core import mnn_activate_no_rho #import moment activation
+from projects.crit.activation_lookup import MomentActivationLookup
+# TODO: double check code for if it uses std or var
 import numpy as np
 import time
 import logging
 
-def gen_config(N=100, ie_ratio=4.0, bg_rate=10.0): #generate config file
-    w = 0.1    
-
+def gen_config(N=100, ie_ratio=4.0, bg_rate=10.0, w=0.1, w_bg=0.1): #generate config file
+    ''' Default parameter values. Recommended not to change anything here, but update it per application.'''
     config = {
     'Vth': 20, #mV, firing threshold, default 20
     'Vres': 10, #mV reset potential; default 0
@@ -20,13 +20,13 @@ def gen_config(N=100, ie_ratio=4.0, bg_rate=10.0): #generate config file
     'wei':{'mean': -w*ie_ratio, 'std': 1e-6},
     'wie':{'mean': w, 'std': 1e-6},    
     'wii':{'mean': -w*ie_ratio, 'std': 1e-6},
+    'w_bg': w_bg, # background excitation weight
     'bg_rate': bg_rate, # external firing rate kHz; rate*in-degree*weight = 0.01*1000*0.1 = 1 kHz
     #'wie':{'mean': 5.9, 'std': 0.0},    
     #'wii':{'mean': -9.4, 'std': 0.0},        
     'conn_prob': 0.1, #connection probability; N.B. high prob leads to poor match between mnn and snn
     'sparse_weight': False, #use sparse weight matrix; not necessarily faster but saves memory
     'randseed':None,
-    'dT': 200, #ms spike count time window
     'delay': 0.0, # default 0.1; synaptic delay (uniform) in Brunel it's around 2 ms (relative to 20 ms mem time scale)
     'dt':0.5, # integration time step for mnn; default 0.02 for oscillation; use 0.1 without oscillation
     'T':10, #simualtion duration
@@ -63,9 +63,6 @@ def gen_synaptic_weight(config):
 
     # Remove diagonal (self-connection)
     W.fill_diagonal_(0)
-
-    if config['sparse_weight']:
-        W = W.to_sparse()  # W.matmul() is efficient but not ().matmul(W)
     
     return W
 
@@ -76,6 +73,8 @@ class StaticRecurrentLayer_backup(nn.Module):
         Use custom backward pass based on linear response theory
         Only supports mean and variance, but not corr.
         Replaces static neural activation.
+
+        To be depreciated.
     '''
     def __init__(self, W, config):
         super(StaticRecurrentLayer, self).__init__()
@@ -186,12 +185,13 @@ class StaticRecurrentLayer(nn.Module):
         self.N = self.NE+self.NI
         self.dt = config['dt'] #integration time-step # we only care about steady state, so make this larger for speed
         self.tau = 1 #synaptic? time constant        
-        self.W = W
+        self.W = W.T #transpose weight for faster matrix multiplication
+        # self.W = self.W.to_sparse_csc() # compressed sparse column format (actually slower on GPU, but saves space)
         self.nsteps_kept = 5 # only keep last k steps for truncated BPTT
 
         #calculate background current stats
         bg_rate = config['bg_rate']
-        we = config['wee']['mean']        
+        we = config['w_bg']        
         self.bg_mean = we*bg_rate
         self.bg_var = we*we*bg_rate 
         
@@ -201,6 +201,8 @@ class StaticRecurrentLayer(nn.Module):
         
         self.T = config['T']
         self.record_ts = config['record_ts']
+
+        self.ma = MomentActivationLookup() #initialize moment activation
         
     def forward(self, ff_mean, ff_std):
         '''# 
@@ -212,8 +214,8 @@ class StaticRecurrentLayer(nn.Module):
         self.delay_steps = int(self.delay/self.dt)
         self.batchsize = ff_mean.shape[0]
 
-        ff_mean = ff_mean.unsqueeze(-1)
-        ff_std = ff_std.unsqueeze(-1)
+        ff_mean = ff_mean#.unsqueeze(-1)
+        ff_std = ff_std#.unsqueeze(-1)
 
         # initial condition
         u = torch.zeros(self.batchsize,self.N) #just 1D array, no column/row 
@@ -235,8 +237,8 @@ class StaticRecurrentLayer(nn.Module):
                 S[:,:,i] = s
             
             # read oldest cached data
-            u_delayed = cache_U[:,:,-1].unsqueeze(-1)
-            s_delayed = cache_S[:,:,-1].unsqueeze(-1)                
+            u_delayed = cache_U[:,:,-1]#.unsqueeze(-1)
+            s_delayed = cache_S[:,:,-1]#.unsqueeze(-1)                
             
             # update cache
             cache_U = torch.roll(cache_U,1,dims = 2)
@@ -244,12 +246,15 @@ class StaticRecurrentLayer(nn.Module):
             cache_U[:,:,0] = u 
             cache_S[:,:,0] = s
             
-            # calculate synaptic current; stimulus is added here
-            curr_mean = self.W @ u_delayed + self.bg_mean + ff_mean  
             
-            curr_std = torch.sqrt((self.W**2) @ (s_delayed**2) + self.bg_var + ff_std) #change name std to var later
-            maf_u, maf_s = mnn_activate_no_rho(curr_mean, curr_std)
+            curr_mean = torch.mm(u_delayed, self.W) + self.bg_mean + ff_mean  
+            curr_std = torch.sqrt( torch.mm( s_delayed.pow(2), self.W)  + self.bg_var + ff_std) #change name std to var later
             
+            #curr_mean = torch.sparse.mm(u_delayed, self.W) + self.bg_mean + ff_mean  
+            #curr_std = torch.sqrt( torch.sparse.mm( s_delayed.pow(2), self.W)  + self.bg_var + ff_std) #change name std to var later
+            
+            maf_u, maf_s = self.ma(curr_mean.squeeze(), curr_std.squeeze()) # input dim should be batch x #neurons
+            #maf_u, maf_s = mnn_activate_no_rho(curr_mean, curr_std)
             #maf_u, maf_s = OriginMnnActivation(curr_mean, curr_std) # issue with if statement check corr: u.size(-1) != 1 and cov.dim() > u.dim()
             # which fails when u is unsqueezed
 
@@ -270,12 +275,9 @@ class StaticRecurrentLayer(nn.Module):
 if __name__=='__main__':
     
     torch.cuda.set_device(0)
-    #current_device = torch.cuda.current_device()
-    #print(current_device)
-
+    
     logging.basicConfig(level=logging.DEBUG) #this prints debug messages
-    config = gen_config(N=12500/2, ie_ratio=4.0, bg_rate=10.0) 
-    config['conn_prob'] = 0.2 # double default value
+    config = gen_config(N=12500, ie_ratio=4.0, bg_rate=20.0) 
     print('Generating synaptic weights...')
     W = gen_synaptic_weight(config)
     print('Initializing static recurrent layers...')
@@ -284,8 +286,8 @@ if __name__=='__main__':
     t0=time.perf_counter()
 
     batchsize = 100
-    u = torch.rand( batchsize, config['NE']+config['NI'], 1)
-    s = torch.rand( batchsize, config['NE']+config['NI'], 1)
+    u = torch.rand( batchsize, config['NE']+config['NI'])
+    s = torch.rand( batchsize, config['NE']+config['NI'])
     U,S = static_rec_layer( u, s )
     print('Time elapsed: ', int(time.perf_counter()-t0))
 
