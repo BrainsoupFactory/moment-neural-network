@@ -15,7 +15,7 @@ def gen_config(N=100, ie_ratio=4.0, bg_rate=10.0, w=0.1, w_bg=0.1): #generate co
     'Tref': 2, #ms, refractory period, default 5
     'NE': int(0.8*N),
     'NI': int(0.2*N),
-    'g': ie_ratio,     #I-E ratio
+    'ie_ratio': ie_ratio,     #I-E ratio
     'wee':{'mean': w, 'std': 1e-6},
     'wei':{'mean': -w*ie_ratio, 'std': 1e-6},
     'wie':{'mean': w, 'std': 1e-6},    

@@ -79,7 +79,7 @@ class trainer_MLP_static_recurrent_mnist():
 
             for i_batch, (data, target) in enumerate(train_dataloader):
                 logging.info( "--Time Elapsed: {}".format( int(time.perf_counter()-t0) ) )
-                logging.info('--Running batch {}'.format(i_batch))
+                logging.info('--Running batch {}, epoch {}'.format(i_batch, epoch))
                 batch_count+=1
                 
                 optimizer.zero_grad()
@@ -100,6 +100,10 @@ class trainer_MLP_static_recurrent_mnist():
                 
                 loss.backward()
                 
+                # apply gradient clipping
+                if config['max_grad_norm']:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=config['max_grad_norm'])
+
                 model.checkpoint['train_loss'].append(loss.item())
                 
                 if config['debug']:
@@ -161,7 +165,7 @@ class trainer_MLP_static_recurrent_mnist():
 
 if __name__ == "__main__":    
     # TODO: integrate trainer config and model config
-    hidden_layer_config = gen_config(N=12500, ie_ratio=3.0, bg_rate=20.0)
+    hidden_layer_config = gen_config(N=1250, ie_ratio=6.0, bg_rate=20.0)
 
     trainer_config = {'sample_size': None,
               'batch_size': 100,
@@ -173,7 +177,7 @@ if __name__ == "__main__":
               'input_size': 784,
               'output_size': 10,
               'trial_id': int(time.time()),
-              'save_dir': './projects/crit/runs/mnn_static_rec/',
+              'save_dir': './projects/crit/runs/mnn_test_lower_learning_rate/',
               'dataset_name': None,              
               'seed': None,
               'debug': False, # cache all intermediate outputs & weights. WARNING: consumes large memory
@@ -182,7 +186,7 @@ if __name__ == "__main__":
               'hidden_layer_config': hidden_layer_config, 
         }
     
-    torch.cuda.set_device(1)
+    torch.cuda.set_device(0)
     logging.basicConfig(level=logging.INFO) #this prints debug messages
 
     model = trainer_MLP_static_recurrent_mnist.train(trainer_config)    
@@ -193,6 +197,7 @@ if __name__ == "__main__":
     torch.save(model.checkpoint, trainer_config['save_dir']+file_name+'.pt') 
     with open(trainer_config['save_dir']+'{}_config.json'.format(file_name),'w') as f:
         json.dump(trainer_config,f)
+    print('Results saved to '+trainer_config['save_dir']+file_name+'.pt')
 
 # TODO: [priority] train one network for sufficient number of epochs e.g. 15 and verify its properties
 # 1. how much does bias current stats change after training? (this determines if the resting state stays critical)
