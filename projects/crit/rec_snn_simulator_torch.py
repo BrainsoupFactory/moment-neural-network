@@ -116,7 +116,7 @@ class InteNFireRNN():
             V = None
         
         #v, tref, is_spike
-        cache_spk = torch.zeros(self.batchsize, self.num_neurons, delay_steps+1, device = device)
+        cache_spk = torch.zeros(self.batchsize, self.num_neurons, delay_steps, device = device)
         
         read_pointer = -1
         write_pointer = 0
@@ -126,10 +126,12 @@ class InteNFireRNN():
             
             # read oldest cached data
             spk_delayed = cache_spk[:,:,read_pointer]
-            
+            # write current state to cache
+            cache_spk[:,:,write_pointer] = is_spike
+
+            #advance cached time by 1 step
             read_pointer = np.mod(read_pointer-1,delay_steps)
             write_pointer = np.mod(write_pointer-1, delay_steps)
-            cache_spk[:,:,write_pointer] = is_spike
             
             #!!! spike input: independent Poisson
             input_current = self.input_gen.ind_poisson(self.dt, device=device)
@@ -186,41 +188,26 @@ def spk_time2csr(spk_history, nneurons, nsteps, sample_id = 0):
 
 #%%    
 if __name__=='__main__':
+    torch.set_default_dtype(torch.float32)
+    
     exp_id = 'test_rec_snn'
     #config = gen_config(N=12500, ie_ratio=4, bg_rate=20)
     N = 12500
     ie_ratio = 6.0
     bg_rate = 40.0
     w = 0.1
-    config = {
-    'Vth': 20, #mV, firing threshold, default 20
-    'Vres': 10, #mV reset potential; default 0
-    'Tref': 2, #ms, refractory period, default 5
-    'NE': int(0.8*N),
-    'NI': int(0.2*N),
-    'ie_ratio': ie_ratio,     #I-E ratio  
-    'wee':{'mean': w, 'std': 1e-6},
-    'wei':{'mean': -w*ie_ratio, 'std': 1e-6},
-    'wie':{'mean': w, 'std': 1e-6},    
-    'wii':{'mean': -w*ie_ratio, 'std': 1e-6},
-    'bg_rate': bg_rate, # external firing rate kHz; rate*in-degree*weight = 0.01*1000*0.1 = 1 kHz
-    'conn_prob': 0.1, #connection probability; N.B. high prob leads to poor match between mnn and snn
-    'sparse_weight': False, #use sparse weight matrix; not necessarily faster but saves memory
-    'randseed':None,
-    #'dT': 200, #ms spike count time window
-    #'delay': 0.1, # synaptic delay (uniform) in Brunel it's around 2 ms (relative to 20 ms mem time scale)
-    #'dt':0.02, # integration time step for mnn
-    }
+    
+    config = gen_config(N=12500, ie_ratio=ie_ratio, bg_rate=bg_rate)
+    config = update_config_snn(config)
     
     config['T_snn']=200 #ms
     config['dt_snn']=0.01 #ms
     config['delay_snn'] = 1.5 #1.5 #ms
     config['batchsize'] = 2
-    
-    #torch.set_default_dtype(torch.float32)
-    
     device = 'cuda'
     config['device']=device
+
+    print(config)
 
     W = gen_synaptic_weight(config) #doesn't take too much time with 1e4 neurons    
     #W = torch.tensor(W, device = device, dtype=torch.float32)
@@ -236,7 +223,7 @@ if __name__=='__main__':
     sparse_matrix = spk_time2csr(spk_history, nneurons, nsteps, sample_id = 0)
     
     spk_count = np.asarray(np.sum(sparse_matrix, axis=0))
-    binwidth = 10
+    binwidth = 10 # dt = 0.01 ms; binwidth of 10 is equal to 0.1 ms window
     spk_count = spk_count.reshape( int(spk_count.shape[1]/binwidth) , binwidth ).sum(axis=1)
     
     tt= np.linspace(0,t[-1], spk_count.shape[0])    
