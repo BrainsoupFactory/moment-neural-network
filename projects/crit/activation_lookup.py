@@ -17,15 +17,15 @@ from matplotlib import pyplot as plt
 import time
 
 class MomentActivationLookup(nn.Module):    
-    def __init__(self):
+    def __init__(self, device = 'cpu'):
         super(MomentActivationLookup, self).__init__()
         '''
         Generate or load direct look-up table with interpolation
         '''
         self.file = 'ma_lookup_tab.pt'
         self.num_pts = 200 #number of points (along one dimension)
-        self.input_mean_grid = torch.linspace(-10, 10, self.num_pts)
-        self.input_std_grid = torch.linspace(0, 20, self.num_pts)
+        self.input_mean_grid = torch.linspace(-10, 10, self.num_pts, device=device)
+        self.input_std_grid = torch.linspace(0, 20, self.num_pts, device=device)
         self.ma =  mnn_activate_no_rho
         # TODO: add support for rho later - if the speed up is significant
         try:
@@ -33,10 +33,10 @@ class MomentActivationLookup(nn.Module):
             U, S = self.load_table()
         except:
             print('Loading failed! Generating new look-up table...')
-            U, S = self.gen_table()
+            U, S = self.gen_table() #only works on cpu...
             
-        self.groundtruth_mean = U
-        self.groundtruth_std = S
+        self.groundtruth_mean = U.to(device)
+        self.groundtruth_std = S.to(device)
         # Interpolating Jacobian in backward pass is inefficient. Just use autograd. 
         # self.groundtruth_dudu 
         # self.groundtruth_duds

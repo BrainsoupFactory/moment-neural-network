@@ -30,13 +30,14 @@ class trainer_MLP_static_recurrent_mnist():
         lr = config['lr']#0.01
         momentum = config['momentum'] #0.9
         optimizer_name = config['optimizer_name']
+        device = config['hidden_layer_config']['device']
         
         input_size = config['input_size']
         output_size = config['output_size']
         hidden_layer_size = config['hidden_layer_config']['NE']+config['hidden_layer_config']['NI']
         
         logging.info('Initializing model...')
-        model = MLP_static_recurrent(input_size,hidden_layer_size,output_size, config=config['hidden_layer_config'])
+        model = MLP_static_recurrent(input_size,hidden_layer_size,output_size, config=config['hidden_layer_config']).to(device)
         
         logging.info('Initializing dataloader...')
         train_dataloader, validation_dataloader = classic_mnist_loader(data_dir = './datasets/', train_batch=batch_size, test_batch=batch_size,  \
@@ -44,7 +45,7 @@ class trainer_MLP_static_recurrent_mnist():
         transform_test = transforms.Compose([transforms.ToTensor()])   )
 
         logging.info('Initializing criterion...')
-        criterion = CrossEntropyOnMean()
+        criterion = CrossEntropyOnMean().to(device)
 
         params = model.parameters()
         
@@ -76,24 +77,25 @@ class trainer_MLP_static_recurrent_mnist():
         for epoch in range(num_epoch):            
             model.train()
             logging.info('Running epoch {}'.format(epoch))
-
+            
             for i_batch, (data, target) in enumerate(train_dataloader):
-                logging.info( "--Time Elapsed: {}".format( int(time.perf_counter()-t0) ) )
-                logging.info('--Running batch {}, epoch {}'.format(i_batch, epoch))
+                #logging.info( "--Time Elapsed: {}".format( int(time.perf_counter()-t0) ) )
+                #logging.info('--Running batch {}, epoch {}'.format(i_batch, epoch))
                 batch_count+=1
                 
                 optimizer.zero_grad()
 
-                data = data.view(data.shape[0], -1) #flatten the image
-                
+                data = data.view(data.shape[0], -1).to(device) #flatten the image
+                target = target.to(device)
+
                 # stimulus transduction to firing stats (Poisson stats)
                 input_mean = data*0.1 
-                input_std = data*0.1
+                input_var = data*0.1
 
                 #input_mean = data*1.0                 # use constant current, no variance
-                #input_std = torch.zeros(input_mean.shape)
+                #input_var = torch.zeros(input_mean.shape)
 
-                output_mean, output_std = model.forward(input_mean, input_std)
+                output_mean, output_var = model.forward(input_mean, input_var)
                 #output_mean = model.forward(input_mean)
                 
                 loss = criterion(output_mean, target)
@@ -128,11 +130,15 @@ class trainer_MLP_static_recurrent_mnist():
                     model.eval()
                     for i_batch, (data, target) in enumerate(validation_dataloader):
 
-                        data = data.view(data.shape[0], -1) #flatten the image                
-                        input_mean = data*1.0
-                        input_std = torch.zeros(input_mean.shape)
+                        data = data.view(data.shape[0], -1).to(device) #flatten the image
+                        target = target.to(device)
 
-                        output_mean, output_std = model.forward(input_mean, input_std)
+                        input_mean = data*0.1 
+                        input_var = data*0.1
+                        #input_mean = data*1.0
+                        #input_var = torch.zeros(input_mean.shape)
+
+                        output_mean, output_var = model.forward(input_mean, input_var)
                         #output_mean = model.forward(input_mean)
                 
                         loss = criterion(output_mean, target)
@@ -164,12 +170,12 @@ class trainer_MLP_static_recurrent_mnist():
         return model
 
 if __name__ == "__main__":    
-    # TODO: integrate trainer config and model config
-    hidden_layer_config = gen_config(N=1250, ie_ratio=6.0, bg_rate=20.0)
+    
+    hidden_layer_config = gen_config(N=1250, ie_ratio=4.0, bg_rate=20.0, device='cuda')
 
     trainer_config = {'sample_size': None,
               'batch_size': 100,
-              'num_epoch': 15,
+              'num_epoch': 1,
               'lr': 0.001,
               'momentum': 0.9,
               'optimizer_name': 'AdamW',
@@ -177,7 +183,7 @@ if __name__ == "__main__":
               'input_size': 784,
               'output_size': 10,
               'trial_id': int(time.time()),
-              'save_dir': './projects/crit/runs/mnn_test_lower_learning_rate/',
+              'save_dir': './projects/crit/runs/test/',
               'dataset_name': None,              
               'seed': None,
               'debug': False, # cache all intermediate outputs & weights. WARNING: consumes large memory

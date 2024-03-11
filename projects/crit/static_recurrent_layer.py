@@ -7,7 +7,7 @@ import numpy as np
 import time
 import logging
 
-def gen_config(N=100, ie_ratio=4.0, bg_rate=10.0, w=0.1, w_bg=0.1): #generate config file
+def gen_config(N=100, ie_ratio=4.0, bg_rate=10.0, w=0.1, w_bg=0.1, hetero=None, device='cpu'): #generate config file
     ''' Default parameter values. Recommended not to change anything here, but update it per application.'''
     config = {
     'Vth': 20, #mV, firing threshold, default 20
@@ -25,12 +25,14 @@ def gen_config(N=100, ie_ratio=4.0, bg_rate=10.0, w=0.1, w_bg=0.1): #generate co
     #'wie':{'mean': 5.9, 'std': 0.0},    
     #'wii':{'mean': -9.4, 'std': 0.0},        
     'conn_prob': 0.1, #connection probability; N.B. high prob leads to poor match between mnn and snn
+    'degree_hetero': hetero, # in-degree heterogeneity (var/mean); if none, use ER network
     'sparse_weight': False, #use sparse weight matrix; not necessarily faster but saves memory
     'randseed':None,
     'delay': 0.0, # default 0.1; synaptic delay (uniform) in Brunel it's around 2 ms (relative to 20 ms mem time scale)
     'dt':0.5, # integration time step for mnn; default 0.02 for oscillation; use 0.1 without oscillation
     'T':10, #simualtion duration
     'record_ts':False,
+    'device': device
     }
 
     return config
@@ -64,7 +66,7 @@ def gen_synaptic_weight(config):
     # Remove diagonal (self-connection)
     W.fill_diagonal_(0)
     
-    return W
+    return W.to(config['device'])
 
 
 
@@ -96,7 +98,7 @@ class StaticRecurrentLayer_backup(nn.Module):
         
         self.batchsize = config['batchsize']
         
-    def forward(self, ff_mean, ff_std):
+    def forward(self, ff_mean, ff_var):
         '''# 
         Custom forward pass. Inputs are mean/std of external input currents
         '''
@@ -137,7 +139,7 @@ class StaticRecurrentLayer_backup(nn.Module):
             
             # calculate synaptic current; stimulus is added here
             mean_curr = self.W @ u_delayed + self.bg_input + ff_mean  
-            std_curr = torch.sqrt((self.W**2) @ (s_delayed**2) + ff_std**2)
+            std_curr = torch.sqrt((self.W**2) @ (s_delayed**2) + ff_var**2)
                         
             maf_u, maf_s = mnn_activate_no_rho(curr_mean, curr_std)
             
@@ -202,9 +204,9 @@ class StaticRecurrentLayer(nn.Module):
         self.T = config['T']
         self.record_ts = config['record_ts']
 
-        self.ma = MomentActivationLookup() #initialize moment activation
+        self.ma = MomentActivationLookup(device=config['device']) #initialize moment activation
         
-    def forward(self, ff_mean, ff_std):
+    def forward(self, ff_mean, ff_var):
         '''# 
         Custom forward pass. Inputs are mean/std of external input currents
         '''
@@ -214,19 +216,19 @@ class StaticRecurrentLayer(nn.Module):
         self.delay_steps = int(self.delay/self.dt)
         self.batchsize = ff_mean.shape[0]
 
-        ff_mean = ff_mean#.unsqueeze(-1)
-        ff_std = ff_std#.unsqueeze(-1)
+        #ff_mean = ff_mean#.unsqueeze(-1)
+        #ff_var = ff_var#.unsqueeze(-1)
 
         # initial condition
-        u = torch.zeros(self.batchsize,self.N) #just 1D array, no column/row 
-        s = torch.zeros(self.batchsize,self.N)
+        u = torch.zeros(self.batchsize,self.N, device=ff_mean.device) #just 1D array, no column/row 
+        s = torch.zeros(self.batchsize,self.N, device=ff_mean.device)
         
         if self.record_ts: # cached data for synaptic delay
-            U = torch.zeros(self.batchsize, self.N, self.nsteps)
-            S = torch.zeros(self.batchsize, self.N, self.nsteps)
+            U = torch.zeros(self.batchsize, self.N, self.nsteps, device=ff_mean.device)
+            S = torch.zeros(self.batchsize, self.N, self.nsteps, device=ff_mean.device)
         
-        cache_U = torch.zeros(self.batchsize, self.N, self.delay_steps+1 ) # NB for 1 step of delay, need to save step+1 entries
-        cache_S = torch.zeros(self.batchsize, self.N, self.delay_steps+1 )
+        cache_U = torch.zeros(self.batchsize, self.N, self.delay_steps+1, device=ff_mean.device) # NB for 1 step of delay, need to save step+1 entries
+        cache_S = torch.zeros(self.batchsize, self.N, self.delay_steps+1, device=ff_mean.device)
             
         a = self.dt/self.tau
         
@@ -238,7 +240,7 @@ class StaticRecurrentLayer(nn.Module):
             
             # read oldest cached data
             u_delayed = cache_U[:,:,-1]#.unsqueeze(-1)
-            s_delayed = cache_S[:,:,-1]#.unsqueeze(-1)                
+            s_delayed = cache_S[:,:,-1]#.unsqueeze(-1)
             
             # update cache
             cache_U = torch.roll(cache_U,1,dims = 2)
@@ -247,13 +249,14 @@ class StaticRecurrentLayer(nn.Module):
             cache_S[:,:,0] = s
             
             
-            curr_mean = torch.mm(u_delayed, self.W) + self.bg_mean + ff_mean  
-            curr_std = torch.sqrt( torch.mm( s_delayed.pow(2), self.W)  + self.bg_var + ff_std) #change name std to var later
+            curr_mean = torch.mm(u_delayed, self.W) + self.bg_mean + ff_mean
+            curr_std = torch.sqrt( torch.mm( s_delayed.pow(2), self.W)  + self.bg_var + ff_var) #change name std to var later
             
             #curr_mean = torch.sparse.mm(u_delayed, self.W) + self.bg_mean + ff_mean  
-            #curr_std = torch.sqrt( torch.sparse.mm( s_delayed.pow(2), self.W)  + self.bg_var + ff_std) #change name std to var later
+            #curr_std = torch.sqrt( torch.sparse.mm( s_delayed.pow(2), self.W)  + self.bg_var + ff_var) #change name std to var later
             
             maf_u, maf_s = self.ma(curr_mean.squeeze(), curr_std.squeeze()) # input dim should be batch x #neurons
+            #maf_u, maf_s = curr_mean.clone(), curr_std.clone()
             #maf_u, maf_s = mnn_activate_no_rho(curr_mean, curr_std)
             #maf_u, maf_s = OriginMnnActivation(curr_mean, curr_std) # issue with if statement check corr: u.size(-1) != 1 and cov.dim() > u.dim()
             # which fails when u is unsqueezed
@@ -277,17 +280,17 @@ if __name__=='__main__':
     torch.cuda.set_device(0)
     
     logging.basicConfig(level=logging.DEBUG) #this prints debug messages
-    config = gen_config(N=12500, ie_ratio=4.0, bg_rate=20.0) 
+    config = gen_config(N=12500, ie_ratio=4.0, bg_rate=20.0, device='cuda')
     print('Generating synaptic weights...')
     W = gen_synaptic_weight(config)
     print('Initializing static recurrent layers...')
     static_rec_layer = StaticRecurrentLayer(W, config)
+    
     print('Testing forward pass...')
     t0=time.perf_counter()
-
     batchsize = 100
-    u = torch.rand( batchsize, config['NE']+config['NI'])
-    s = torch.rand( batchsize, config['NE']+config['NI'])
+    u = torch.rand( batchsize, config['NE']+config['NI'], device=config['device'])
+    s = torch.rand( batchsize, config['NE']+config['NI'], device=config['device'])
     U,S = static_rec_layer( u, s )
     print('Time elapsed: ', int(time.perf_counter()-t0))
 

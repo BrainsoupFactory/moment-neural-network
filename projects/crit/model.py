@@ -69,16 +69,18 @@ if __name__=='__main__':
 
 
     input_size = 100
-    hidden_size = 1250
+    hidden_size = 12500
     output_size = 10
 
     batchsize = 100
-    u = torch.rand( batchsize, input_size)
-    s = torch.rand( batchsize, input_size)
+    device = 'cuda'
+    u = torch.rand( batchsize, input_size, device=device)
+    s = torch.rand( batchsize, input_size, device=device)
 
     #model = MLP_static_recurrent(input_size,hidden_size,output_size)
-    config = gen_config(hidden_size, 4.0 , 20)    
-    model = MLP_static_recurrent(input_size, hidden_size, output_size, config=config)
+    config = gen_config(N=hidden_size, ie_ratio=4.0, bg_rate=20.0, device=device)
+ #   config = gen_config(hidden_size, 4.0 , 20)    
+    model = MLP_static_recurrent(input_size, hidden_size, output_size, config=config).to(device)
     
     model.forward(u,s)
 
