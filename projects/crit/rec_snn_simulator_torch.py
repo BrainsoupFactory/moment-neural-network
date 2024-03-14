@@ -71,7 +71,7 @@ class InteNFireRNN():
         self.WT = WT #transpose of synaptic weight matrix
         self.input_gen = input_gen # input generator, class object
         
-    
+        
     def forward(self, v, tref, is_spike, ff_current):
         #compute voltage
         v += -v*self.L*self.dt + torch.matmul(is_spike, self.WT) + ff_current
@@ -99,6 +99,8 @@ class InteNFireRNN():
         self.T = T #min(10e3, 100/maf_u) #T = desired number of spikes / mean firing rate
         num_timesteps = int(self.T/self.dt)
         delay_steps = int(self.delay/self.dt) # works when delay is zero
+
+        self.max_num_spks = int(0.15*self.batchsize*self.num_neurons*T)  # stop early if spikes exceed a limit
         
         tref = torch.zeros(self.batchsize, self.num_neurons, device=device) #tracker for refractory period
         #v = np.random.rand(self.num_neurons,1)*self.Vth #initial voltage
@@ -106,7 +108,8 @@ class InteNFireRNN():
         is_spike = torch.zeros(self.batchsize, self.num_neurons, device=device)
         
         #SpkTime = [[] for i in range(self.num_neurons)]
-        spk_history = np.empty((0,3),dtype=np.uint32) # sample_id x neuron_id x time
+        #spk_history = np.empty((0,3),dtype=np.uint32) # sample_id x neuron_id x time
+        spk_history = np.empty((self.max_num_spks,3),dtype=np.uint32) # sample_id x neuron_id x time, pre-allocate memory
         
         t = np.arange(0, self.T , self.dt)
         
@@ -121,6 +124,8 @@ class InteNFireRNN():
         read_pointer = -1
         write_pointer = 0
         
+        total_num_spks = 0 # track total number of spikes
+
         start_time = time.time()
         for i in range(num_timesteps):
             
@@ -145,15 +150,36 @@ class InteNFireRNN():
                 
                 spk_indices = torch.nonzero(is_spike).to('cpu').numpy().astype(np.uint32) #each row is a 2-tuple (sample_id, neuron_id)
             
-            spk_time = np.full( (spk_indices.shape[0],1), i , dtype=np.uint32)
-            spk_indices = np.hstack( (spk_indices, spk_time ))  # add spike time as column                
-            spk_history = np.vstack( (spk_history, spk_indices) ) # 
+            #spk_time = np.full( (spk_indices.shape[0],1), i , dtype=np.uint32)
+            #spk_indices = np.hstack( (spk_indices, spk_time ))  # add spike time as column                
+            #spk_history = np.vstack( (spk_history, spk_indices) ) #
+
+            # TODO: figure
+            # if k+num_spks < spk_history.shape[0] (which is max number of spikes allowed)
+            # spk_history[k:k+num_spks,2] = i # fill in the time
+            # spk_history[k:k+num_spks,:2] = spk_indices, whose dim should be batch id, neuron id
+            # else:
+            # break # don't be bothered with this time step, just exit early, it's fine.
+            # remember to keep track of the total number of spikes and crop off the excess
             
+            if total_num_spks+spk_indices.shape[0] > self.max_num_spks:
+                print('Total number of spikes have exceeded pre-allocated limit!')  # stop early if spikes exceed a limit
+                print('Existing simulation...')
+                break
+
+            spk_history[total_num_spks:total_num_spks+spk_indices.shape[0], :2] = spk_indices #update sample id and neuron id
+            spk_history[total_num_spks:total_num_spks+spk_indices.shape[0], 2] = i #update spike time
+            
+            total_num_spks += spk_indices.shape[0] # update total number of spikes
+        
+
             if show_message and (i+1) % int(num_timesteps/10) == 0:
                 progress = (i+1)/num_timesteps*100
                 elapsed_time = (time.time()-start_time)/60
                 print('Progress: {:.2f}%; Time elapsed: {:.2f} min'.format(progress, elapsed_time ), flush=True)
-                
+        
+        spk_history = spk_history[:total_num_spks,:] # discard data in pre-allocated but unused memory
+
         return spk_history, V, t
 
 def spk_time2count(spk_history, timewindow, config):
@@ -193,7 +219,7 @@ if __name__=='__main__':
     exp_id = 'test_rec_snn'
     #config = gen_config(N=12500, ie_ratio=4, bg_rate=20)
     N = 12500
-    ie_ratio = 6.0
+    ie_ratio = 1.0 #6.0
     bg_rate = 40.0
     w = 0.1
     
@@ -226,12 +252,17 @@ if __name__=='__main__':
     binwidth = 10 # dt = 0.01 ms; binwidth of 10 is equal to 0.1 ms window
     spk_count = spk_count.reshape( int(spk_count.shape[1]/binwidth) , binwidth ).sum(axis=1)
     
+    pop_firing_rate = spk_count/nneurons/0.1*1e3
+    print('Avg pop firing rate (sp/s)', pop_firing_rate.mean())
+
     tt= np.linspace(0,t[-1], spk_count.shape[0])    
     
     plt.figure(figsize=(8,2))
-    plt.bar(tt , spk_count, width = tt[1]-tt[0] )
+    plt.bar(tt , pop_firing_rate, width = tt[1]-tt[0] )
     plt.xlim([t[0],t[-1]])
     plt.tight_layout()
+    plt.xlabel('time (ms)')
+    plt.ylabel('Pop firing rate (sp/s)')
     plt.savefig('tmp_snn_pop_spike_count.png')
     plt.close('all')
 
