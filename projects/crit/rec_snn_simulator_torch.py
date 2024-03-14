@@ -98,7 +98,7 @@ class InteNFireRNN():
         
         self.T = T #min(10e3, 100/maf_u) #T = desired number of spikes / mean firing rate
         num_timesteps = int(self.T/self.dt)
-        delay_steps = int(self.delay/self.dt) # works when delay is zero
+        delay_steps = int(self.delay/self.dt)+1 # works when delay is zero
 
         self.max_num_spks = int(0.15*self.batchsize*self.num_neurons*T)  # stop early if spikes exceed a limit
         
@@ -219,7 +219,7 @@ if __name__=='__main__':
     exp_id = 'test_rec_snn'
     #config = gen_config(N=12500, ie_ratio=4, bg_rate=20)
     N = 12500
-    ie_ratio = 1.0 #6.0
+    ie_ratio = 6.0
     bg_rate = 40.0
     w = 0.1
     
