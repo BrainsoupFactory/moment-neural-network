@@ -86,7 +86,7 @@ class StaticRecurrentLayer_backup(nn.Module):
         self.N = self.NE+self.NI
         self.dt = config['dt'] #integration time-step # we only care about steady state, so make this larger for speed
         self.tau = 1 #synaptic? time constant        
-        self.W = W
+        self.W_trans = W
         self.bg_input = config['bg_input']
 
         
@@ -138,8 +138,8 @@ class StaticRecurrentLayer_backup(nn.Module):
             cache_S[:,:,0] = s
             
             # calculate synaptic current; stimulus is added here
-            mean_curr = self.W @ u_delayed + self.bg_input + ff_mean  
-            std_curr = torch.sqrt((self.W**2) @ (s_delayed**2) + ff_var**2)
+            mean_curr = self.W_trans @ u_delayed + self.bg_input + ff_mean  
+            std_curr = torch.sqrt((self.W_trans**2) @ (s_delayed**2) + ff_var**2)
                         
             maf_u, maf_s = mnn_activate_no_rho(curr_mean, curr_std)
             
@@ -187,8 +187,9 @@ class StaticRecurrentLayer(nn.Module):
         self.N = self.NE+self.NI
         self.dt = config['dt'] #integration time-step # we only care about steady state, so make this larger for speed
         self.tau = 1 #synaptic? time constant        
-        self.W = W.T #transpose weight for faster matrix multiplication
-        # self.W = self.W.to_sparse_csc() # compressed sparse column format (actually slower on GPU, but saves space)
+        #self.W_trans = W.T #transpose weight for faster matrix multiplication
+        # self.W_trans = self.W_trans.to_sparse_csc() # compressed sparse column format (actually slower on GPU, but saves space)
+        self.register_buffer('W_trans', W.T) # register non-trainable parameter
         self.nsteps_kept = 5 # only keep last k steps for truncated BPTT
 
         #calculate background current stats
@@ -249,11 +250,11 @@ class StaticRecurrentLayer(nn.Module):
             cache_S[:,:,0] = s
             
             
-            curr_mean = torch.mm(u_delayed, self.W) + self.bg_mean + ff_mean
-            curr_std = torch.sqrt( torch.mm( s_delayed.pow(2), self.W)  + self.bg_var + ff_var) #change name std to var later
+            curr_mean = torch.mm(u_delayed, self.W_trans) + self.bg_mean + ff_mean
+            curr_std = torch.sqrt( torch.mm( s_delayed.pow(2), self.W_trans)  + self.bg_var + ff_var) #change name std to var later
             
-            #curr_mean = torch.sparse.mm(u_delayed, self.W) + self.bg_mean + ff_mean  
-            #curr_std = torch.sqrt( torch.sparse.mm( s_delayed.pow(2), self.W)  + self.bg_var + ff_var) #change name std to var later
+            #curr_mean = torch.sparse.mm(u_delayed, self.W_trans) + self.bg_mean + ff_mean  
+            #curr_std = torch.sqrt( torch.sparse.mm( s_delayed.pow(2), self.W_trans)  + self.bg_var + ff_var) #change name std to var later
             
             maf_u, maf_s = self.ma(curr_mean.squeeze(), curr_std.squeeze()) # input dim should be batch x #neurons
             #maf_u, maf_s = curr_mean.clone(), curr_std.clone()
