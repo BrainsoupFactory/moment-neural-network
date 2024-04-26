@@ -84,7 +84,9 @@ class SNNInputGenerator():
         alpha = isi_mean * isi_mean / isi_var
         
         is_spike = time2nextspike==0      # emit a spike if time-to-next-spike reaches zero
-        isi = torch.distributions.Gamma(alpha[is_spike], beta[is_spike]).sample() #sample new ISI 
+        isi = torch.distributions.Gamma(alpha[is_spike], beta[is_spike]).sample() #sample new ISI
+        indx = isi_var[is_spike]==0
+        isi[indx] = isi_mean[is_spike][indx] #replace isi with its mean if isi_var is zero.
         time2nextspike[is_spike] = (isi/dt).to(torch.int64) # update time-to-next-spike
         time2nextspike[~is_spike] += -1 # count down time
         
@@ -246,7 +248,7 @@ def run_w_rate_validation_EI(exp_id, T=1e3, dt_snn=1e-2, device = 'cuda', savefi
     
     print('Setting up parameters to be swept...')
     
-    batchsize = 1000 # number of independent samples (make this large to avoid no spikes)     
+    batchsize = 3000 # number of independent samples (make this large to avoid no spikes)     
     device= device    
 
     indx = 0 # dummy variable, no use
@@ -280,8 +282,9 @@ def run_w_rate_validation_EI(exp_id, T=1e3, dt_snn=1e-2, device = 'cuda', savefi
     # print('Setting up SNN model...')
     # num_neurons = exc_rate_grid.shape[1]
 
-    exc_spk_mean = (curr_mean_grid+1)/w_grid
-    inh_spk_mean = torch.ones(curr_std_grid.shape, device=device)/w_grid
+    inh_curr = 1.2
+    exc_spk_mean = (curr_mean_grid+inh_curr)/w_grid
+    inh_spk_mean = inh_curr*torch.ones(curr_std_grid.shape, device=device)/w_grid
     exc_spk_var = 0.5*(curr_std_grid/w_grid).pow(2.0)
     inh_spk_var = exc_spk_var.clone()
 
@@ -304,7 +307,7 @@ def run_w_rate_validation_EI(exp_id, T=1e3, dt_snn=1e-2, device = 'cuda', savefi
     ei_spk_stats = [exc_spk_mean.repeat(batchsize, 1), exc_spk_var.repeat(batchsize, 1), inh_spk_mean.repeat(batchsize, 1), inh_spk_var.repeat(batchsize, 1)]
     
     config = gen_config(batchsize, num_neurons, T, device=device, dt_snn = dt_snn )
-    config['record_interval'] = None # ms. record spike count every x ms
+    config['record_interval'] = 100 # ms. record spike count every x ms
     
     
     print('rho = ', rho)    
@@ -390,7 +393,7 @@ if __name__=='__main__':
     print('Running experiment {}'.format(exp_id))
     #run(exp_id, T = 10e3, dt_snn= 1e-2, device = 'cuda', savefile=True)
     #run_w_rate_validation(exp_id, T = 10e3, dt_snn= 1e-2, device = device, savefile=True)
-    run_w_rate_validation_EI(exp_id, T=1e3, dt_snn=1e-3, device = device, savefile=True)
+    run_w_rate_validation_EI(exp_id, T=2e3, dt_snn=2e-4, device = device, savefile=True)
     #spike_gen_debugger()
 
     #exp_id = '2024_mar_21_debug_low_std_high_mean'
