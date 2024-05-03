@@ -3,42 +3,52 @@
 from mnn.mnn_core.mnn_utils import Mnn_Core_Func, Param_Container
 import numpy as np
 from matplotlib import pyplot as plt
-
+import torch
 
 class Moment_Activation_Cond(Mnn_Core_Func):
     def __init__(self):
         super().__init__()
-        self.vol_th = -50 # firing threshold; mV
+        ''' strictly follow PRE 2024'''
+        
+        self.tau_L = 20 # membrane time constant
         self.tau_E = 4 # excitatory synaptic time scale (ms)
         self.tau_I = 10 # inhibitory synaptic time scale (ms)
-        self.VL = -70 # leak reverseal potential
+        self.VL = -60 # leak reverseal potential
         self.VE = 0 # excitatory reversal potential
-        self.VI = -70 # inhibitory reversal potential
+        self.VI = -80 # inhibitory reversal potential
         #self.tau_eff = None # effective time constant
         self.vol_th = -50 # firing threshold
-        self.vol_rest = -55 # reset potential
+        self.vol_rest = -60 # reset potential
         
-        gL = 0.05 # microsiemens; NB inh neuron has different value
-        self.gE = 0.125/gL #excitatory conductance; microsiemens
-        self.gI = 5.46/gL #inhibitory conductance; microsiemens
+        self.L = 1/self.tau_L
+                
+        self.sE = 1.0 # modifier to conductance (can be voltage dependent)
+        self.sI = 1.0
+        
+        # TODO: horrible scalability; consider a list of g, input_mean, input_std
+        # so it supports any number of channels
+        
 
         self.t_ref = 2 # ms; NB inhibitory neuron has different value
 
-        #TODO: different membrane time constant for E/I neurons (20 for ext, 10 for inh)
-        #TODO: best way to proceed: create two instances of MA.
-
+        
     def cond2curr(self, exc_input_mean, exc_input_std, inh_input_mean, inh_input_std):
-        '''map conductance-based to current-based spiking neuron
+        ''' This step should be called synaptic activation (vs neuronal activation)
+        map conductance-based to current-based spiking neuron
         using the effective time constant approximation'''
-        tau_L = 1/self.L # membrane time constant
-        tau_eff = tau_L/(1+self.gE*exc_input_mean*self.tau_E + self.gI*inh_input_mean*self.tau_I) # effective time constant
-        V_eff = tau_eff/tau_L*(self.VL + self.gE*exc_input_mean*self.tau_E*self.VE \
-                               + self.gI*inh_input_mean*self.tau_I*self.VI) #effective reversal potential
+        
+        tau_eff = self.tau_L/(1+self.sE*exc_input_mean + self.sI*inh_input_mean) # effective time constant
+        V_eff = tau_eff/self.tau_L*(self.VL + self.sE*exc_input_mean*self.VE \
+                               + self.sI*inh_input_mean*self.VI) #effective reversal potential
         
         # approximating multiplicative noise;
-        h_E = self.tau_E/tau_L*self.gE*(self.VE-V_eff)*exc_input_std
-        h_I = self.tau_I/tau_L*self.gI*(self.VI-V_eff)*inh_input_std
+        #h_E = np.sqrt(self.tau_E)*self.tau_E/tau_L*self.gE*(self.VE-V_eff)*exc_input_std
+        #h_I = np.sqrt(self.tau_I)*self.tau_I/tau_L*self.gI*(self.VI-V_eff)*inh_input_std
+        
+        h_E = np.sqrt(self.tau_E)/self.tau_L*self.sE*(self.VE-V_eff)*exc_input_std
+        h_I = np.sqrt(self.tau_I)/self.tau_L*self.sI*(self.VI-V_eff)*inh_input_std
 
+        
         # effective input mean/std
         eff_input_mean = V_eff/tau_eff
         tmp = tau_eff*tau_eff/(tau_eff+self.tau_E)*h_E*h_E
@@ -98,6 +108,24 @@ class Moment_Activation_Cond(Mnn_Core_Func):
 
         std_out = np.sqrt(fano_factor * u_a)
         return std_out
+    
+    def activate(self, eff_input_mean, eff_input_std, tau_eff):
+        # for pytorch
+        device = eff_input_mean.device
+        
+        eff_input_mean = eff_input_mean.cpu().numpy()
+        eff_input_std = eff_input_std.cpu().numpy()
+        tau_eff = tau_eff.cpu().numpy()
+        
+        mean_out = self.forward_fast_mean(eff_input_mean, eff_input_std, tau_eff)
+        std_out = self.forward_fast_std(eff_input_mean, eff_input_std, tau_eff, mean_out)
+        
+        mean_out = torch.tensor(mean_out, device=device)
+        std_out = torch.tensor(std_out, device=device)
+        return mean_out, std_out
+    
+
+        
 
 def plot_the_map():
     ma = Moment_Activation_Cond()
