@@ -37,16 +37,16 @@ class Moment_Activation_Cond(Mnn_Core_Func):
         map conductance-based to current-based spiking neuron
         using the effective time constant approximation'''
         
-        tau_eff = self.tau_L/(1+self.sE*exc_input_mean + self.sI*inh_input_mean) # effective time constant
-        V_eff = tau_eff/self.tau_L*(self.VL + self.sE*exc_input_mean*self.VE \
-                               + self.sI*inh_input_mean*self.VI) #effective reversal potential
+        tau_eff = self.tau_L/(1+self.sE*exc_input_mean*self.tau_E + self.sI*inh_input_mean*self.tau_I) # effective time constant
+        V_eff = tau_eff/self.tau_L*(self.VL + self.sE*exc_input_mean*self.tau_E*self.VE \
+                               + self.sI*inh_input_mean*self.tau_I*self.VI) #effective reversal potential
         
         # approximating multiplicative noise;
         #h_E = np.sqrt(self.tau_E)*self.tau_E/tau_L*self.gE*(self.VE-V_eff)*exc_input_std
         #h_I = np.sqrt(self.tau_I)*self.tau_I/tau_L*self.gI*(self.VI-V_eff)*inh_input_std
         
-        h_E = np.sqrt(self.tau_E)/self.tau_L*self.sE*(self.VE-V_eff)*exc_input_std
-        h_I = np.sqrt(self.tau_I)/self.tau_L*self.sI*(self.VI-V_eff)*inh_input_std
+        h_E = self.tau_E/self.tau_L*self.sE*(self.VE-V_eff)*exc_input_std
+        h_I = self.tau_I/self.tau_L*self.sI*(self.VI-V_eff)*inh_input_std
 
         
         # effective input mean/std

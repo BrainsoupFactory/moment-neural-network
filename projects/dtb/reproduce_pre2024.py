@@ -31,10 +31,10 @@ for i in range(len(tau_E)):
     
     # Note in PRE 2024, input is multiplied by tau_E and tau_I
     # TODO: but this is not intrinsic to the model, so we absorb this parameter inside the moment activation
-    exc_input_mean = we*KE*input_rate*ma.tau_E
-    exc_input_std = we*np.sqrt(KE*input_rate*ma.tau_E)
-    inh_input_mean = wi*KI*input_rate*ma.tau_I
-    inh_input_std = wi*np.sqrt(KI*input_rate*ma.tau_I)
+    exc_input_mean = we*KE*input_rate
+    exc_input_std = we*np.sqrt(KE*input_rate)
+    inh_input_mean = wi*KI*input_rate
+    inh_input_std = wi*np.sqrt(KI*input_rate)
     
     eff_input_mean, eff_input_std, tau_eff = ma.cond2curr(exc_input_mean,exc_input_std,inh_input_mean,inh_input_std)
     mean_out = ma.forward_fast_mean( eff_input_mean, eff_input_std, tau_eff)
