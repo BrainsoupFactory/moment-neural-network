@@ -6,20 +6,31 @@ from matplotlib import pyplot as plt
 import torch
 
 class Moment_Activation_Cond(Mnn_Core_Func):
-    def __init__(self):
+    def __init__(self, config=None):
         super().__init__()
         ''' strictly follow PRE 2024'''
         
-        self.tau_L = 20 # membrane time constant
-        self.tau_E = 4 # excitatory synaptic time scale (ms)
-        self.tau_I = 10 # inhibitory synaptic time scale (ms)
-        self.VL = -60 # leak reverseal potential
-        self.VE = 0 # excitatory reversal potential
-        self.VI = -80 # inhibitory reversal potential
-        #self.tau_eff = None # effective time constant
-        self.vol_th = -50 # firing threshold
-        self.vol_rest = -60 # reset potential
-        
+        if config==None: 
+            self.tau_L = 20 # membrane time constant
+            self.tau_E = 4 # excitatory synaptic time scale (ms)
+            self.tau_I = 10 # inhibitory synaptic time scale (ms)
+            self.VL = -60 # leak reverseal potential
+            self.VE = 0 # excitatory reversal potential
+            self.VI = -80 # inhibitory reversal potential
+            self.vol_th = -50 # firing threshold
+            self.vol_rest = -60 # reset potential
+            self.t_ref = 2 # ms; NB inhibitory neuron has different value
+        else:    
+            self.tau_L = config['tau_L'] # membrane time constant
+            self.tau_E = config['tau_E'] # excitatory synaptic time scale (ms)
+            self.tau_I = config['tau_I'] # inhibitory synaptic time scale (ms)
+            self.VL = config['VL'] # leak reverseal potential
+            self.VE = config['VE'] # excitatory reversal potential
+            self.VI = config['VI'] # inhibitory reversal potential
+            self.vol_th = config['Vth'] # firing threshold
+            self.vol_rest = config['Vres'] # reset potential
+            self.t_ref = config['Tref'] # ms; NB inhibitory neuron has different value
+            
         self.L = 1/self.tau_L
                 
         self.sE = 1.0 # modifier to conductance (can be voltage dependent)
@@ -29,7 +40,7 @@ class Moment_Activation_Cond(Mnn_Core_Func):
         # so it supports any number of channels
         
 
-        self.t_ref = 2 # ms; NB inhibitory neuron has different value
+        
 
         
     def cond2curr(self, exc_input_mean, exc_input_std, inh_input_mean, inh_input_std):
@@ -49,10 +60,12 @@ class Moment_Activation_Cond(Mnn_Core_Func):
         h_I = self.tau_I/self.tau_L*self.sI*(self.VI-V_eff)*inh_input_std
 
         
-        # effective input mean/std
+        # effective input current mean/std 
+        # NB: in PRE 2024 this is voltage mean/std
+        # so a conversion factor of 1/tau_eff is applied
         eff_input_mean = V_eff/tau_eff
-        tmp = tau_eff*tau_eff/(tau_eff+self.tau_E)*h_E*h_E
-        tmp = tmp + tau_eff*tau_eff/(tau_eff+self.tau_I)*h_I*h_I
+        tmp = tau_eff/(tau_eff+self.tau_E)*h_E*h_E
+        tmp = tmp + tau_eff/(tau_eff+self.tau_I)*h_I*h_I
         eff_input_std = np.power(tmp,0.5)
 
         return eff_input_mean, eff_input_std, tau_eff
@@ -128,6 +141,8 @@ class Moment_Activation_Cond(Mnn_Core_Func):
         
 
 def plot_the_map():
+    config = {}
+    
     ma = Moment_Activation_Cond()
     # print all properties and methods of the class
     print(vars(ma))
