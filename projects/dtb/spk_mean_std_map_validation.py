@@ -116,7 +116,7 @@ class SNNInputGenerator():
 
 
 
-def run(exp_id, T=1e3, dt_snn=1e-2, device = 'cuda', savefile=False, savefig=False):
+def run(exp_id, indx=0, T=1e3, dt_snn=1e-2, device = 'cuda', savefile=False, savefig=False):
     path =  './projects/dtb/runs/{}/'.format( exp_id )
     if not os.path.exists(path):
         os.makedirs(path)
@@ -126,12 +126,17 @@ def run(exp_id, T=1e3, dt_snn=1e-2, device = 'cuda', savefile=False, savefig=Fal
     batchsize = 1000 # number of independent samples (make this large to avoid no spikes)     
     device= device    
 
-    indx = 0 # dummy variable, no use
+    #indx = 0 # dummy variable, no use
 
     rho = 0 # for mean, std mapping need independent samples
-    exc_input_rate = torch.linspace(0,2,21, device=device)
-    inh_input_rate = torch.linspace(0,0.1,11, device=device)
+    exc_input_rate = torch.linspace(0,1,21, device=device)
+    inh_input_rate = torch.linspace(0,0.25,11, device=device)
     
+    #KE=400 # excitatory in-degree?
+    #KI=100
+    #input_rate = torch.tensor([5e-3, 10e-3, 20e-3], device=device).unsqueeze(0) # sp/ms, same for both exc and inh inputs
+    we=0.1*np.array([1,2,3])[indx] # 0.5
+    wi = 0.4 # 0.4, 1.0, 10
        
 
     X, Y = torch.meshgrid(exc_input_rate, inh_input_rate, indexing='xy')
@@ -147,8 +152,8 @@ def run(exp_id, T=1e3, dt_snn=1e-2, device = 'cuda', savefile=False, savefig=Fal
     
     print('rho = ', rho)    
     print('Using uncorrelated input.')
-    exc_input_gen = SNNInputGenerator(config, input_mean=X, device=device).gen_uncorr_spk_one_channel
-    inh_input_gen = SNNInputGenerator(config, input_mean=Y, device=device).gen_uncorr_spk_one_channel
+    exc_input_gen = SNNInputGenerator(config, input_mean=X, w=we, device=device).gen_uncorr_spk_one_channel
+    inh_input_gen = SNNInputGenerator(config, input_mean=Y, w=wi, device=device).gen_uncorr_spk_one_channel
 
     snn_model = CondInteNFire(config, [exc_input_gen,inh_input_gen])
 
@@ -175,8 +180,9 @@ def run(exp_id, T=1e3, dt_snn=1e-2, device = 'cuda', savefile=False, savefig=Fal
     
     if savefig:
         print('Calculating spike count stats...')
-        snn_rate = torch.mean(spk_count, dim=0)/config['T_snn']
-        snn_std = torch.std(spk_count,dim=0)/np.sqrt(config['T_snn'])
+        T = config['T_snn']-config['discard']
+        snn_rate = torch.mean(spk_count, dim=0)/T
+        snn_std = torch.std(spk_count,dim=0)/np.sqrt(T)
         #snn_fano_factor = torch.var(spk_count,dim=0)/torch.mean(spk_count,dim=0)
         
         plt.figure()
@@ -312,15 +318,19 @@ def run_vary_tau_E(exp_id, indx, T=1e3, dt_snn=1e-2, device = 'cuda', savefile=F
 if __name__=='__main__':
     torch.set_default_dtype(torch.float64) #for accurate corrcoef estimate
     
-    #exp_id = 'vary_tau_E'
-    exp_id = 'vary_tau_E_zoom_in' #sys.argv[1] #'2024_mar_30_mean_std'
-    device = 'cpu'
-    #device = 'cuda'
+    #device = 'cpu'
+    device = 'cuda'
+    exp_id = 'vary_input_stats'
+    for i in range(3):
+        run(exp_id, indx=i, T=1e3, dt_snn=1e-2, device = device, savefile=True, savefig=True)
     
-    print('Running experiment {}'.format(exp_id))
-    for indx in range(21):
-        print('Running trial:', indx)
-        run_vary_tau_E(exp_id, indx, T = 10e3, dt_snn= 1e-2, device = device, savefile=True)
+    #exp_id = 'vary_tau_E'
+    #exp_id = 'vary_tau_E_zoom_in' #sys.argv[1] #'2024_mar_30_mean_std'
+    
+    # print('Running experiment {}'.format(exp_id))
+    # for indx in range(21):
+    #     print('Running trial:', indx)
+    #     run_vary_tau_E(exp_id, indx, T = 10e3, dt_snn= 1e-2, device = device, savefile=True)
     
     # notes on performance
     # batchsize = 1000, T=1e3

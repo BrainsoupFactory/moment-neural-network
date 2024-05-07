@@ -79,12 +79,16 @@ class Moment_Activation_Cond(Mnn_Core_Func):
         indx2 = indx0 & indx1
 
         mean_out = np.zeros(ubar.shape)
-
+        
         # Region 0 is approx zero for sufficiently large cut_off
         # Region 1 is calculate normally
         ub = (self.vol_th /tau_eff[indx2] - ubar[indx2]) / (sbar[indx2] / np.sqrt(tau_eff[indx2]))
         lb = (self.vol_rest /tau_eff[indx2] - ubar[indx2]) / (sbar[indx2] / np.sqrt(tau_eff[indx2]))
-
+        
+        # test_correction = -0.6
+        # ub += test_correction
+        # lb += test_correction
+        
         temp_mean = 2 *tau_eff[indx2] * (self.Dawson1.int_fast(ub) - self.Dawson1.int_fast(lb))
 
         mean_out[indx2] = 1 / (temp_mean + self.t_ref)
@@ -111,7 +115,7 @@ class Moment_Activation_Cond(Mnn_Core_Func):
         # Region 1 is calculate normally
         ub = (self.vol_th /tau_eff[indx2] - ubar[indx2]) / (sbar[indx2] / np.sqrt(tau_eff[indx2]))
         lb = (self.vol_rest /tau_eff[indx2] - ubar[indx2]) / (sbar[indx2] / np.sqrt(tau_eff[indx2]))
-
+        
         # cached mean used
         varT = 8 *tau_eff[indx2]*tau_eff[indx2] * (self.Dawson2.int_fast(ub) - self.Dawson2.int_fast(lb))
         fano_factor[indx2] = varT * u_a[indx2] * u_a[indx2]
