@@ -55,8 +55,12 @@ def test(exp_id, indx = 0):
     #ma.tau_E *= 1.414
     #ma.tau_I*=1.414
     
-    ma.tau_E *= 1.414
-    ma.tau_I *= 1.75
+    #ma.tau_E *= 1.414
+    #ma.tau_I *= 1.75
+    
+    ma.tau_E *= 1.44490582
+    ma.tau_I *= 2.14643191
+#    [1.125 1.025]
     
     
     exc_rate = dat['exc_input_rate'] # firng rate in kHz
