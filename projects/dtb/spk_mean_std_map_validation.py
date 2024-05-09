@@ -315,14 +315,90 @@ def run_vary_tau_E(exp_id, indx, T=1e3, dt_snn=1e-2, device = 'cuda', savefile=F
         
         plt.close('all')
 
+
+def run_gaussian_input(exp_id, indx=0, T=1e3, dt_snn=1e-2, device = 'cuda', savefile=False, savefig=False):
+    path =  './projects/dtb/runs/{}/'.format( exp_id )
+    if not os.path.exists(path):
+        os.makedirs(path)
+    
+    print('Setting up parameters to be swept...')
+    
+    batchsize = 1000 # number of independent samples (make this large to avoid no spikes)     
+    device= device    
+
+    #indx = 0 # dummy variable, no use
+
+    rho = 0 # for mean, std mapping need independent samples
+    exc_input_rate = torch.linspace(0,1,11, device=device)
+    exc_input_FF = torch.linspace(0,2,11, device=device)
+    inh_input_rate = torch.linspace(0,0.25,11, device=device)
+    inh_input_FF = torch.linspace(0,2,11, device=device)
+    
+    we=0.1*np.array([1,2,3])[indx] # 0.5
+    wi = 0.4 # 0.4, 1.0, 10
+       
+    M1, FF1, M2, FF2 = torch.meshgrid(exc_input_rate, exc_input_FF, inh_input_rate, inh_input_FF, indexing='ij')
+    
+    # inner dim: std, outer dim: mean
+    M1 = M1.flatten().unsqueeze(0)
+    FF1 = FF1.flatten().unsqueeze(0)
+    M2 = M2.flatten().unsqueeze(0)
+    FF2 = FF2.flatten().unsqueeze(0)
+    
+    # calculate weighted input mean/std 
+    exc_input_mean = M1*we
+    exc_input_std = we*torch.sqrt(M1*FF1)
+    inh_input_mean = M2*wi
+    inh_input_std = wi*torch.sqrt(M2*FF2)
+    
+
+    print('Setting up SNN model...')
+    num_neurons = M1.shape[1]
+    
+    config = gen_config(batchsize, num_neurons, T, device=device, dt_snn = dt_snn )
+    config['record_interval'] = 100 # ms. record spike count every x ms
+    
+    print('rho = ', rho)    
+    print('Using uncorrelated input.')
+    print('batchsize=', batchsize)
+    print(' #neurons=', num_neurons)
+    exc_input_gen = SNNInputGenerator(config, input_mean=exc_input_mean, input_std=exc_input_std,  device=device).gen_uncorr_normal_rv
+    inh_input_gen = SNNInputGenerator(config, input_mean=inh_input_mean, input_std=inh_input_std,  device=device).gen_uncorr_normal_rv
+
+    snn_model = CondInteNFire(config, [exc_input_gen,inh_input_gen])
+
+    print('Simulating SNN...')
+    spk_count, V, t, spk_count_history = snn_model.run( config['T_snn'] , record_interval=config['record_interval'], show_message=True, device = device) # ms
+
+    
+    data_dict = {'spk_count': spk_count.cpu().numpy(),
+    'config':config,
+    'exc_input_rate':exc_input_rate.cpu().numpy(),
+    'inh_input_rate':inh_input_rate.cpu().numpy(),
+    'exc_input_FF': exc_input_FF.cpu().numpy(),
+    'inh_input_FF': inh_input_FF.cpu().numpy(),
+    'rho':rho,    
+    'spk_count_history':spk_count_history,
+    't':t,
+    'T_snn': T,
+    'dt_snn': dt_snn,
+    }
+    
+    if savefile:
+        #filename = str(indx).zfill(3) +'_'+str(int(time.time())) + '.npz'
+        filename = str(indx).zfill(3) +'.npz'
+        np.savez(path+filename, **data_dict)
+        print('Results saved to: ', path+filename)
+
+
 if __name__=='__main__':
     torch.set_default_dtype(torch.float64) #for accurate corrcoef estimate
     
-    #device = 'cpu'
-    device = 'cuda'
+    device = 'cpu'
+    #device = 'cuda'
     exp_id = 'vary_input_stats'
     for i in range(3):
-        run(exp_id, indx=i, T=1e3, dt_snn=1e-2, device = device, savefile=True, savefig=True)
+        run_gaussian_input(exp_id, indx=i, T=1e3, dt_snn=1e-2, device = device, savefile=True, savefig=True)
     
     #exp_id = 'vary_tau_E'
     #exp_id = 'vary_tau_E_zoom_in' #sys.argv[1] #'2024_mar_30_mean_std'
