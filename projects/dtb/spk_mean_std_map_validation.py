@@ -129,15 +129,33 @@ def run(exp_id, indx=0, T=1e3, dt_snn=1e-2, device = 'cuda', savefile=False, sav
     #indx = 0 # dummy variable, no use
 
     rho = 0 # for mean, std mapping need independent samples
-    exc_input_rate = torch.linspace(0,1,21, device=device)
-    inh_input_rate = torch.linspace(0,0.25,11, device=device)
     
     #KE=400 # excitatory in-degree?
     #KI=100
     #input_rate = torch.tensor([5e-3, 10e-3, 20e-3], device=device).unsqueeze(0) # sp/ms, same for both exc and inh inputs
-    we=0.1*np.array([1,2,3])[indx] # 0.5
-    wi = 0.4 # 0.4, 1.0, 10
-       
+    #we=0.1*np.array([1,2,3])[indx] # 0.5
+    #we = np.linspace(0,1.0,21)[1:][indx]
+    #wi = 0.4 # 0.4, 1.0, 10
+    if exp_id == 'vary_input_stats_poisson':
+        exc_input_rate = torch.linspace(0,1,21, device=device)
+        inh_input_rate = torch.linspace(0,0.25,21, device=device)
+        we = np.linspace(0,1.0,21)[1:][indx]
+        wi = 0.4 # 0.4, 1.0, 10    
+    elif exp_id =='vary_input_stats_we_wi':
+        exc_input_rate = torch.linspace(0,1,21, device=device)
+        inh_input_rate = torch.linspace(0,1,21, device=device)
+        we = np.linspace(0,1.0,21)[1:]
+        wi = np.linspace(0,1.0,21)
+        ii, jj = np.unravel_index(indx, ( len(we) , len(wi)) ) #, order='C')
+        we=we[ii]
+        wi=wi[jj]
+    elif exp_id == 'very_x_input_stats':
+        exc_input_rate = torch.linspace(0,1,21, device=device)
+        inh_input_rate = torch.linspace(0,0.25,21, device=device)
+        we = 0.1 #np.linspace(0,1.0,21)[1:][indx]
+        wi = 0.4 # 0.4, 1.0, 10
+        x_input_rate = np.linspace(0,4,21)[indx]
+        
 
     X, Y = torch.meshgrid(exc_input_rate, inh_input_rate, indexing='xy')
     # inner dim: std, outer dim: mean
@@ -148,14 +166,18 @@ def run(exp_id, indx=0, T=1e3, dt_snn=1e-2, device = 'cuda', savefile=False, sav
     num_neurons = X.shape[1]
     
     config = gen_config(batchsize, num_neurons, T, device=device, dt_snn = dt_snn )
-    config['record_interval'] = 100 # ms. record spike count every x ms
+    config['record_interval'] = None #100 # ms. record spike count every x ms
     
+    x_input_mean = x_input_rate*torch.ones(1, num_neurons, device=device)
+    x_input_std = np.sqrt(x_input_rate)*torch.ones(1, num_neurons, device=device)
+
     print('rho = ', rho)    
     print('Using uncorrelated input.')
     exc_input_gen = SNNInputGenerator(config, input_mean=X, w=we, device=device).gen_uncorr_spk_one_channel
     inh_input_gen = SNNInputGenerator(config, input_mean=Y, w=wi, device=device).gen_uncorr_spk_one_channel
+    x_input_gen = SNNInputGenerator(config, input_mean=x_input_mean, input_std=x_input_std, device=device).gen_uncorr_normal_rv
 
-    snn_model = CondInteNFire(config, [exc_input_gen,inh_input_gen])
+    snn_model = CondInteNFire(config, [exc_input_gen, inh_input_gen, x_input_gen])
 
     print('Simulating SNN...')
     spk_count, V, t, spk_count_history = snn_model.run( config['T_snn'] , record_interval=config['record_interval'], show_message=True, device = device) # ms
@@ -165,8 +187,11 @@ def run(exp_id, indx=0, T=1e3, dt_snn=1e-2, device = 'cuda', savefile=False, sav
     'config':config,
     'exc_input_rate':exc_input_rate.cpu().numpy(),
     'inh_input_rate':inh_input_rate.cpu().numpy(),
+    'x_input_rate':x_input_rate,
     'rho':rho,    
     'spk_count_history':spk_count_history,
+    'we':we,
+    'wi':wi,
     't':t,
     'T_snn': T,
     'dt_snn': dt_snn,
@@ -394,11 +419,11 @@ def run_gaussian_input(exp_id, indx=0, T=1e3, dt_snn=1e-2, device = 'cuda', save
 if __name__=='__main__':
     torch.set_default_dtype(torch.float64) #for accurate corrcoef estimate
     
-    device = 'cpu'
-    #device = 'cuda'
-    exp_id = 'vary_input_stats'
-    for i in range(3):
-        run_gaussian_input(exp_id, indx=i, T=1e3, dt_snn=1e-2, device = device, savefile=True, savefig=True)
+    #device = 'cpu'
+    device = 'cuda'
+    exp_id = 'very_x_input_stats'
+    for i in range(420):
+        run(exp_id, indx=i, T=1e3, dt_snn=1e-2, device = device, savefile=True, savefig=False)
     
     #exp_id = 'vary_tau_E'
     #exp_id = 'vary_tau_E_zoom_in' #sys.argv[1] #'2024_mar_30_mean_std'
