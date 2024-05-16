@@ -11,7 +11,7 @@ import torch
 import scipy as sp
 import matplotlib.pyplot as plt
 import time
-from projects.crit.static_recurrent_layer import gen_synaptic_weight, gen_config
+from projects.pre2023.rec_mnn_simulator_corr import gen_synaptic_weight, gen_config
 
 def update_config_snn(config): #update config file for snn
     ''' Use base configs from MNN and add SNN specific configs'''
@@ -46,12 +46,9 @@ class SNNInputGenerator():
     def ind_poisson(self, dt, device = 'cpu'):
         #dt = simulation time step (ms)
         p = self.bg_rate*self.dt # requires p<1        
-        input_current = self.w_bg*(torch.rand(self.batchsize, self.N, device=device) < p)
+        input_current = self.w_bg*(torch.rand(self.batchsize, self.N, device=device) < p)        
         return input_current
     
-
-#!!! might as well take this opportunity to add batch dimension!!!
-
 class InteNFireRNN():
     def __init__(self, config, WT, input_gen):
         ''' W = weight matrix, input_gen = generator for external input'''
