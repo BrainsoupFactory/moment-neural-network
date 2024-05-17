@@ -64,6 +64,7 @@ class InteNFireRNN():
         self.num_neurons = config['NE'] + config['NI']      
         self.batchsize = config['batchsize']
         self.delay = config['delay_snn']
+        self.discard = config['discard']
         
         self.WT = WT #transpose of synaptic weight matrix
         self.input_gen = input_gen # input generator, class object
@@ -103,7 +104,7 @@ class InteNFireRNN():
         v = torch.rand(self.batchsize, self.num_neurons, device=device)*self.Vth #initial voltage
         #v = torch.zeros(self.batchsize, self.num_neurons, device=device)
         is_spike = torch.zeros(self.batchsize, self.num_neurons, device=device)
-        
+        spk_count = torch.zeros(self.batchsize, self.num_neurons, device=device)
         #SpkTime = [[] for i in range(self.num_neurons)]
         #spk_history = np.empty((0,3),dtype=np.uint32) # sample_id x neuron_id x time
         spk_history = np.empty((self.max_num_spks,3),dtype=np.uint32) # sample_id x neuron_id x time, pre-allocate memory
@@ -145,19 +146,10 @@ class InteNFireRNN():
                 if record_v:
                     V[:,i] = v[0,:].flatten() #saves only 1 sample from the batch to limit memory consumption
                 
-                spk_indices = torch.nonzero(is_spike).to('cpu').numpy().astype(np.uint32) #each row is a 2-tuple (sample_id, neuron_id)
-            
-            #spk_time = np.full( (spk_indices.shape[0],1), i , dtype=np.uint32)
-            #spk_indices = np.hstack( (spk_indices, spk_time ))  # add spike time as column                
-            #spk_history = np.vstack( (spk_history, spk_indices) ) #
+                if i> int(self.discard/self.dt): #discard first 100 ms
+                    spk_count += is_spike
 
-            # TODO: figure
-            # if k+num_spks < spk_history.shape[0] (which is max number of spikes allowed)
-            # spk_history[k:k+num_spks,2] = i # fill in the time
-            # spk_history[k:k+num_spks,:2] = spk_indices, whose dim should be batch id, neuron id
-            # else:
-            # break # don't be bothered with this time step, just exit early, it's fine.
-            # remember to keep track of the total number of spikes and crop off the excess
+                spk_indices = torch.nonzero(is_spike).to('cpu').numpy().astype(np.uint32) #each row is a 2-tuple (sample_id, neuron_id)
             
             if total_num_spks+spk_indices.shape[0] > self.max_num_spks:
                 print('Total number of spikes have exceeded pre-allocated limit!')  # stop early if spikes exceed a limit
@@ -177,7 +169,7 @@ class InteNFireRNN():
         
         spk_history = spk_history[:total_num_spks,:] # discard data in pre-allocated but unused memory
 
-        return spk_history, V, t
+        return spk_count, spk_history, V, t
 
 def spk_time2count(spk_history, timewindow, config):
     '''Calculate spike count from spike time over a given time window'''
