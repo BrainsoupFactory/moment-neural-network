@@ -124,7 +124,7 @@ A custom simulator of SNN is provided with GPU support but you may use any SNN s
 
 # Lead authors
 
-- **Zhichao Zhu** - *Chief Architect* - [Zhichao Zhu](https://github.com/Acturos)
+- **Zhichao Zhu** - *Chief Architect* - [Zhichao Zhu](https://github.com/ZhichaoZhu)
 - **Yang Qi** - *Lead Algorithm Design* - [Yang Qi](https://github.com/qiyangku)
 
 # License
