@@ -92,7 +92,8 @@ class MnnMlp(torch.nn.Module):
     def __init__(self, structure, num_class: int = 10, bn_bias_var: bool = False, predict_bias: bool = False,
                  predict_bias_var: bool = False, use_mean: bool = True, use_cov: bool = False,
                  special_init: bool = True, dropout: Optional[float] = None, momentum: float = 0.9, eps: float = 1e-5,
-                 record_bn_mean_var=False, signal_correlation=False, ln_bias=False, ln_bias_var=False, sparse_degree=None):
+                 record_bn_mean_var=False, signal_correlation=False, ln_bias=False, ln_bias_var=False, sparse_degree=None,
+                 params_for_criterion=False) -> None:
         super(MnnMlp, self).__init__()
         self.mlp = torch.nn.ModuleList()
         for i in range(len(structure) - 1):
@@ -124,6 +125,9 @@ class MnnMlp(torch.nn.Module):
                 self.predict = mnn_core.nn.Identity()
             else:
                 self.predict = mnn_core.nn.LinearDuo(in_dims, num_class, bias=predict_bias, bias_var=predict_bias_var)
+        
+        if params_for_criterion:
+            self.register_parameter('criterion_params', torch.nn.Parameter(torch.ones(num_class - 1)))
 
     def forward(self, inputs: Tuple):
         u, cov = _general_forward(inputs, self.mlp)
