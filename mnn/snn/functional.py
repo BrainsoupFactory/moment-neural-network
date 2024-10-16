@@ -8,7 +8,7 @@ from .. import mnn_core
 
 class MnnSnnValidate:
     def __init__(self, args, running_time=20, dt=1e-2, num_trials=100, monitor_size=None, 
-                pregenerate=False, resume_best=True, train=False, init_vol=None, alias='', input_type='gaussian', train_funcs=None, unsqueeze_input=0, align_batch_size=True, **kwargs) -> None:
+                pregenerate=False, resume_best=True, train=False, init_vol=None, alias='', input_type='gaussian', train_funcs=None, unsqueeze_input=None, align_batch_size=False, config_save_path=None, **kwargs) -> None:
         
         self.running_time = running_time
         self.train = train
@@ -24,6 +24,7 @@ class MnnSnnValidate:
         self.prefix = 'run{}_dt{}'.format(running_time, dt)
         self.input_type = input_type
         self.unsqueeze_input = unsqueeze_input
+        self.config_save_path = config_save_path
         
         if train_funcs is None:
             self.train_funcs = utils.training_tools.general_train.TrainProcessCollections()
@@ -47,11 +48,17 @@ class MnnSnnValidate:
         pass
 
     def resume_config(self, args, resume_best):
-        save_path = getattr(args, 'dump_path', './checkpoint/') + args.dir + '/'
+        if self.config_save_path is not None:
+            save_path = self.config_save_path
+        else:
+            save_path = getattr(args, 'dump_path', './checkpoint/') + args.dir + '/'
         args.save_path = save_path
         args.config = save_path + args.save_name + '_config.yaml'
         args = utils.training_tools.set_config2args(args)
+        args.save_path = save_path
+        args.config = save_path + args.save_name + '_config.yaml'
         args.resume_best = resume_best
+        args.dir = args.save_name.split('_')[-1]
         if getattr(self, 'local_rank', None) is not None:
             args.local_rank = self.local_rank
         args.use_cuda = getattr(args, 'use_cuda', True)
@@ -251,4 +258,6 @@ def sparse_spike_train_statistics(spike_train: Tensor, time_window: float, start
     mean = torch.mean(spike_count, dim=-1) / time_window
     cov = torch.cov(spike_count) / time_window
     return mean, cov
+
+
 
