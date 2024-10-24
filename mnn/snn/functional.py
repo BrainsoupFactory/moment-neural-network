@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import torch
-
+from tqdm import tqdm
 from torch import Tensor
 from .. import utils
 from . import base, mnn2snn
@@ -58,7 +58,6 @@ class MnnSnnValidate:
         args.save_path = save_path
         args.config = save_path + args.save_name + '_config.yaml'
         args.resume_best = resume_best
-        args.dir = args.save_name.split('_')[-1]
         if getattr(self, 'local_rank', None) is not None:
             args.local_rank = self.local_rank
         args.use_cuda = getattr(args, 'use_cuda', True)
@@ -259,5 +258,65 @@ def sparse_spike_train_statistics(spike_train: Tensor, time_window: float, start
     cov = torch.cov(spike_count) / time_window
     return mean, cov
 
+
+
+class CustomMnnMlp(mnn2snn.MnnMlpTrans):
+    def forward(self, x):
+        x = self.mlp(x)
+        x = torch.matmul(self.predict.weight, x.unsqueeze(-1)).squeeze(-1)
+        if self.predict.bias is not None:
+            x += self.predict.bias * self.dt
+        return x
+
+
+@torch.no_grad()
+def snn_validation(checkpoint, save_name, train_funcs, dt=1, num_trials=None, running_time=100, resume_best=False, pre_run=50, do_reset=True, init_vol=None, input_type='poisson'):
+    args = utils.training_tools.TempArgs()
+    args.config = checkpoint + '{}_config.yaml'.format(save_name)
+    args = utils.training_tools.set_config2args(args)
+    args.config = checkpoint + '{}_config.yaml'.format(save_name)
+    args.dir = checkpoint.split('/')[-2]
+    print(save_name, args.scale_factor, args.bs,  args.dir)
+    if num_trials is None:
+        total_trials = args.bs
+    else:
+        total_trials = (num_trials, args.bs)
+
+    _, test_loader = train_funcs.prepare_dataloader(args)
+    snn_simulator = MnnSnnValidate(args, train_funcs=train_funcs, dt=dt, num_trials=total_trials, running_time=running_time, MNN_MLP=CustomMnnMlp, resume_best=resume_best, init_vol=init_vol, input_type=input_type)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    results = []
+    targes = []
+    model = snn_simulator.snn.to(device)
+    model.eval()
+    for data, labels in tqdm(test_loader):
+        if do_reset:
+            model.reset()
+        (data, _), _ = train_funcs.data2device(data, None, args)
+        if num_trials is None:
+            num_neurons = data.size()
+        else:
+            num_neurons = [num_trials] + list(data.size())
+            data = data.unsqueeze(0)
+        # Has the shape of (num_trials, batch, num_neurons)
+        if input_type == 'poisson':
+            input_current = base.PoissonSpikeGenerator(num_neurons=num_neurons, freqs=data, dt=dt).to(device)
+        else:
+            input_current = base.GaussianCurrentGenerator(num_neurons=num_neurons, mean=data, std=torch.sqrt(data),dt=dt).to(device)
+        case  = []
+        if pre_run > 0:
+            for _ in range(int(pre_run/dt)):
+                x = input_current()
+                x = model(x)
+        for _ in range(int(running_time / dt)):
+            x = input_current()
+            x = model(x)
+            case.append(x.unsqueeze(0))
+        case = torch.cat(case, dim=0).cpu()
+        results.append(case)
+        targes.append(labels)
+    results = torch.cat(results, dim=-2)
+    targes = torch.cat(targes, dim=0)
+    return results, targes
 
 

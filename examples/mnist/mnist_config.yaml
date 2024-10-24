@@ -62,7 +62,7 @@ dataset: mnist
 dataset_type: classic
 input_prepare: flatten_poisson
 save_epoch_state: False
-scale_factor: 0.1
+scale_factor: 1.0
 is_classify: True
 background_noise: ~
 dump_path: ./checkpoint/

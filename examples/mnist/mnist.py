@@ -205,7 +205,7 @@ class MnistSnnValidate(snn.functional.MnnSnnValidate):
         cov = torch.diag_embed(torch.abs(mean))
         mean, cov  = self.mnn((mean, cov))
         pred = self.predict_policy((mean, cov))
-        return mean, cov, pred, target
+        return (mean, cov), pred, target
     
     @torch.inference_mode()
     def run_one_simulation(self, idx, record=True, dump_spike_train=False, overwrite=True, **kwargs):
@@ -213,9 +213,20 @@ class MnistSnnValidate(snn.functional.MnnSnnValidate):
         return super().run_one_simulation(idx, record, dump_spike_train, overwrite, **kwargs)
     
     @torch.inference_mode()
-    def validate_one_sample(self, idx, do_reset=False, print_log=False, **kwargs):
+    def validate_one_sample(self, idx, do_reset=True, dump_spike_train=True, record=True, print_log=True, **kwargs):
         # func to call mnn-snn simulation
-        return super().validate_one_sample(idx, do_reset, print_log, **kwargs)
+        if do_reset:
+            self.reset()
+        else:
+            self.custom_reset()
+        mnn_outputs, mnn_pred, target = self.mnn_validate_one_sample(idx)
+        self.run_one_simulation(idx, record=record, dump_spike_train=dump_spike_train, **kwargs)
+        snn_outputs = self.snn.make_predict()
+        pred = self.predict_policy(snn_outputs)
+        if print_log:
+            print('{}, Img idx: {}, target: {}, pred: {}'.format('train set' if self.train else 'test set', idx, target, pred))
+        self.save_result(idx=idx,mnn_output=(mnn_outputs, mnn_pred), target=target,
+                         snn_output=(snn_outputs, pred), running_time=self.running_time, dt=self.dt, **kwargs) 
 
 
 def mnn2snn_simulation(args):
@@ -231,7 +242,7 @@ def mnn2snn_simulation(args):
 
 def main():
     config = utils.training_tools.deploy_config()
-    train_mnist(config)
+    #train_mnist(config)
     mnn2snn_simulation(config)
 
 if __name__ == '__main__':

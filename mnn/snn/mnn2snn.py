@@ -311,6 +311,7 @@ class MnnMlpTrans(models.MnnMlp, MnnBaseTrans):
             module = neuron_type(num, dt=dt, **kwargs)
             mlp.append(module)
         self.mlp = torch.nn.Sequential(*mlp)
+        self.dt = dt
     
     def forward(self, x: Tensor) -> Tensor:
         x = self.mlp(x)
@@ -407,6 +408,7 @@ class MnnMlpMeanOnlyTrans(models.MnnMlpMeanOnly, MnnBaseTrans):
             mlp.append(module)
 
         self.mlp = torch.nn.Sequential(*mlp)
+        self.dt = dt
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.mlp(x)
@@ -438,6 +440,7 @@ class MnnMlpMeanOnlyTrans(models.MnnMlpMeanOnly, MnnBaseTrans):
                     test_data = m(test_data)
             feature_extractor.append(m)
         self.feature_extractor = torch.nn.Sequential(*feature_extractor)
+        self.dt = dt
         
         if self.classifier_cfg is not None:
             mlp = torch.nn.ModuleList()
