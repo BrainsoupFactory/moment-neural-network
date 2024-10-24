@@ -155,3 +155,6 @@ data/
 checkpoint/
 config/
 .idea/
+mnist.py
+mnist_config.yaml
+example.ipynb

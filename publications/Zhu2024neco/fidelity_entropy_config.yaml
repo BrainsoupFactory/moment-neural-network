@@ -1,6 +1,7 @@
 MODEL:
   meta:
     arch: mnn_mlp
+    cnn: True
     cnn_type: ~
     mlp_type: mnn_mlp
 
@@ -8,29 +9,25 @@ MODEL:
     structure:
       - 784
       - 1000
-
     num_class: 10
-    bn_bias_var: False
-    predict_bias: True
-    predict_bias_var: False
-    special_init: True
-    dropout: ~
-    momentum: 0.9
-    eps: 1.e-5
+    predict_bias: False
 
   snn_mlp:
    structure:
     - 784
-    - 800
+    - 1000
    num_class: 10
    use_cov: False
+   activation: raw
    bn_bias_var: False
 
 CRITERION:
-  name: CrossEntropyOnMean
+  args:
+    reduction: mean
+    num_class: 10
+    is_classify: True
+  name: SampleBasedEarthMoverLoss
   source: mnn_core
-  args: 
-   reduction: mean
 
 
 OPTIMIZER:
@@ -42,7 +39,12 @@ OPTIMIZER:
 
 DATAAUG_TRAIN:
   aug_order:
-    - ToTensor
+   - RandomCrop
+   - ToTensor
+    
+  
+  CenterCrop:
+   size: 20
 
   RandomCrop:
    size: 28
@@ -50,7 +52,10 @@ DATAAUG_TRAIN:
 
 DATAAUG_VAL:
   aug_order:
-    - ToTensor
+   - ToTensor
+  
+  CenterCrop:
+   size: 20
 
 workers: 2
 lr: 0.001
@@ -62,8 +67,5 @@ dataset: mnist
 dataset_type: classic
 input_prepare: flatten_poisson
 save_epoch_state: False
-scale_factor: 1.0
-is_classify: True
+scale_factor: 1.
 background_noise: ~
-dump_path: ./checkpoint/
-

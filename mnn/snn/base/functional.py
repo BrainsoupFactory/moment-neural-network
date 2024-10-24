@@ -10,9 +10,15 @@ def sample_size(num_neurons, num_steps=None):
         num = [1, num_neurons]
     else:
         if isinstance(num_neurons, int):
-            num = (num_steps, num_neurons)
+            if isinstance(num_steps, int):
+                num = (num_steps, num_neurons)
+            else:
+                num = list(num_steps) + [num_neurons]
         else:
-            num = [num_steps] + list(num_neurons)
+            if isinstance(num_steps, int):
+                num = [num_steps] + list(num_neurons)
+            else:
+                num = list(num_steps) + list(num_neurons)
     return num
 
 def pregenerate_gaussian_current(num_neurons, num_steps: int, mean: Tensor, std: Tensor, rho: Optional[Tensor] = None, generator=None):

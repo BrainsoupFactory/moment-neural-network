@@ -171,8 +171,10 @@ if __name__ == '__main__':
     config = utils.training_tools.deploy_config()
     trial = 1
     for i in range(trial):
-        train_motion_direction(config, suffix=i)
-        train_fine_grain(config, suffix=i)
-        motion_direction_snn_simulation(config, suffix=i)
-        fine_grain_snn_simulation(config, suffix=i)
+        if "motion" in config.config:
+            train_motion_direction(config, suffix=i)
+            motion_direction_snn_simulation(config, suffix=i)
+        elif "fine_grain" in config.config:
+            train_fine_grain(config, suffix=i)
+            fine_grain_snn_simulation(config, suffix=i)
     

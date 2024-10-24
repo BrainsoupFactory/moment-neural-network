@@ -139,7 +139,7 @@ def prepare_dataloader(args, data_dir='./data/'):
     if args.dataset == 'mnist':
         transform_train = make_transforms_compose(args.DATAAUG_TRAIN)
         transform_val = make_transforms_compose(args.DATAAUG_VAL)
-        train_loader, test_loader = dataloaders.classic_mnist_loader(data_dir, args.bs, transform_train=transform_train,
+        train_loader, test_loader = dataloaders.classic_mnist_loader(data_dir, args.bs, args.bs, transform_train=transform_train,
                                                                         transform_test=transform_val)
     else:
         train_set, test_set = make_torchvision_dataset(args, data_dir)

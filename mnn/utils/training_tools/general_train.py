@@ -101,7 +101,7 @@ def to_cuda(data, local_rank):
 
 class TrainProcessCollections:
     
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         pass
 
     def set_random_seed(self, seed):
@@ -140,18 +140,26 @@ class TrainProcessCollections:
         return filter(lambda p: p.requires_grad, model.parameters())
     
     def input_preprocessing(self, data, args):
-        if getattr(args, 'flatten_input', True):
-            data = torch.flatten(data, start_dim=1)
-        data = data * getattr(args, 'scale_factor', 1.)
-        if getattr(args, 'input_prepare', None) == 'flatten_poisson':
-            cov = torch.diag_embed(torch.abs(data))
-        elif getattr(args, 'input_prepare', None) == 'poisson_no_rho':
-            cov = torch.abs(data)
-        elif getattr(args, 'input_prepare', None) == 'cov_embed':
-            cov = torch.sqrt(torch.abs(data))
-            cov = torch.einsum('b i, b j -> b i j', cov, cov)
+        if isinstance(data, tuple):
+            data, cov = data
         else:
-            cov = None
+            if getattr(args, 'flatten_input', True):
+                data = torch.flatten(data, start_dim=1)
+            data = data * getattr(args, 'scale_factor', 1.)
+            if getattr(args, 'input_prepare', None) == 'flatten_poisson':
+                cov = torch.diag_embed(torch.abs(data))
+            elif getattr(args, 'input_prepare', None) == 'poisson_no_rho':
+                cov = torch.abs(data)
+            elif getattr(args, 'input_prepare', None) == 'cov_embed':
+                cov = torch.sqrt(torch.abs(data))
+                mask = cov > 0.01
+                cov = torch.einsum('b i, b j -> b i j', cov, cov)
+                mask = torch.einsum('b i, b j -> b i j', mask, mask)
+                cov.diagonal(dim1=-2, dim2=-1).fill_(torch.max(cov).item())
+                cov = cov * mask
+                #data = torch.ones_like(data)
+            else:
+                cov = None
             
         if getattr(args, 'background_noise', None) is not None and cov is not None:
             if data.size() == cov.size():
@@ -166,7 +174,13 @@ class TrainProcessCollections:
         
     def data2device(self, data, target, args):
         if args.use_cuda:
-            data = data.cuda(args.local_rank, non_blocking=True)
+            if isinstance(data, tuple):
+                data, cov = data
+                data = data.cuda(args.local_rank, non_blocking=True)
+                cov = cov.cuda(args.local_rank, non_blocking=True)
+                data = (data, cov)
+            else:
+                data = data.cuda(args.local_rank, non_blocking=True)
             if isinstance(target, torch.Tensor):
                 target = target.cuda(args.local_rank, non_blocking=True)
         
@@ -214,7 +228,10 @@ class TrainProcessCollections:
     
     def compute_loss(self, output, target, criterion, model=None, args=None, inputs=None):
         # will pass the model and args by default in train and val process to support custom operation
-        loss = criterion(output, target)
+        if hasattr(model, 'criterion_params'):
+            loss = criterion(output, target, model.criterion_params)
+        else:
+            loss = criterion(output, target)
         return loss
 
     def train_one_epoch(self, train_loader, model, criterion, optimizer, epoch, args,):
@@ -237,12 +254,12 @@ class TrainProcessCollections:
                                      save_name=args.save_name + '_epoch_{}'.format(epoch))
         for i, (images, target) in enumerate(train_loader):
             # measure data loading time
-            data_time.update(time.time() - end)
+            
 
             self.clip_model_params(model, args)
 
             images, target = self.data2device(images, target, args)
-
+            data_time.update(time.time() - end)
             # compute output
             output = self.compute_model_output(model, images, args)
             loss = self.compute_loss(output=output, target=target, criterion=criterion, model=model, args=args, inputs=images)
@@ -508,8 +525,8 @@ def general_distributed_train_pipeline(local_rank, nprocs, args, train_func=Trai
     func.DistributedOps.cleanup()
 
 
-def general_train_pipeline(args, train_func=TrainProcessCollections):
-    train_func = train_func()
+def general_train_pipeline(args, train_func=TrainProcessCollections, **kwargs):
+    train_func = train_func(args, **kwargs)
     local_rank = 0
     if args.seed is not None:
         train_func.set_random_seed(args.seed)
