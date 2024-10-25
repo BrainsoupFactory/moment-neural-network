@@ -63,7 +63,8 @@ dataset_type: classic
 input_prepare: flatten_poisson
 save_epoch_state: False
 scale_factor: 1.0
-is_classify: True
+data_dir: ./data/
+task_type: classification
 background_noise: ~
 dump_path: ./checkpoint/
 
