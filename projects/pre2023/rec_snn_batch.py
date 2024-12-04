@@ -6,7 +6,7 @@ A helper function for running multiple runs with different config
 """
 
 from projects.pre2023.rec_snn_simulator_torch import *
-from projects.pre2023.rec_mnn_simulator_corr import gen_synaptic_weight, gen_config
+from projects.pre2023.rec_mnn_simulator import gen_synaptic_weight, gen_config
 #from matplotlib import pyplot as plt
 import numpy as np
 import os, sys, time
@@ -21,11 +21,12 @@ def run(config, record_ts = True ):
     
     W = gen_synaptic_weight(config) #doesn't take too much time with 1e4 neurons    
     #W = W.numpy() #convert to numpy
-    input_gen = SNNInputGenerator(config)
+    input_gen = SNNInputGenerator(config).ind_poisson
     #mnn_model = RecurrentMNN(config, W, input_gen)
     snn_model = InteNFireRNN(config, W.T , input_gen)
-    spk_count, spk_history, V, t = snn_model.run( config['T_snn'] ,show_message=True, device = config['device'])
-    return spk_count.cpu().numpy(), spk_history, t
+    #snn_model = InteNFireRNN_filtered(config, W.T , input_gen)
+    spk_count, spk_history, V, t, pop_spk_count = snn_model.run( config['T_snn'] ,show_message=True, device = config['device'])
+    return spk_count.cpu().numpy(), spk_history, t, pop_spk_count.cpu().numpy()
 
 def quick_plots(config, spk_history, path, indx, sample_id = 0):
     print('Plotting results...')
@@ -71,43 +72,54 @@ if __name__ == "__main__":
     indx = int(sys.argv[1]) #use this to pick a particular config
     exp_id = sys.argv[2] # id for the set of experiment
     
-    uext_array = np.array([10,20,30]) # only simulate specific slices
-    ie_ratio_array = np.linspace(0.0, 8.0, 21)
+    #beta=1.1676406135865596 # calibration factor
+    uext_array = np.array([20,40]) # only simulate specific slices
+    ie_ratio_array = np.linspace(0, 8.0, 41) 
+    delay_array = np.array([1.5]) #ms
 
-    i,j = np.unravel_index(indx, [len(uext_array), len(ie_ratio_array)] ) 
+    i,j,k = np.unravel_index(indx, [len(uext_array), len(ie_ratio_array), len(delay_array)] ) 
     # to get linear index back from subscripts, use: np.ravel_multi_index((i,j),[len(uext_array), len(ie_ratio_array)])
     
-    config = gen_config(N=12500/5, w=0.1*5, ie_ratio=ie_ratio_array[j], bg_rate=uext_array[i])
+    config = gen_config(N=12500, w=0.1, ie_ratio=ie_ratio_array[j], bg_rate=uext_array[i])
     config = update_config_snn(config)
     config['device']=sys.argv[3]
+    
+    config['delay_snn'] = delay_array[k]
 
-    # use MNN default parameter settings
     config['Vth'] = 20.0 #mV, firing threshold, default 20
-    config['Vres'] = 0.0 #mV reset potential; default 0
-    config['Tref'] = 5.0
-    config['delay_snn'] = 0.0
-    config['T_snn'] = 1000
-    config['batchsize'] = 1000 #need a bare minimum for accurate corr estimate
+    config['Vres'] = 10.0 #mV reset potential; default 0
+    config['Tref'] = 2.0
+    config['T_snn'] = int(1e3)
+    config['batchsize'] = 1000
     config['randseed'] = 0
     config['discard'] = 100 # ms
+    config['transient_corr'] = None
+    config['transient_duration'] = None #ms
+    
+    # temporary test override
+    # config['T_snn'] = 1e3
+    # config['transient_corr'] = 0.8
+    # config['transient_duration'] = 100 #ms
+    # config['discard'] = 200 # ms
+    config['batchsize'] = 100
+    config['dt_snn'] = 1e-3
+    config['delay_snn'] = 0 #only care about async activity
+
     print(config)
 
-    #u,s = run(config)
-    spk_count, spk_history, t = run(config)
-    
     path =  './projects/pre2023/runs/{}/'.format( exp_id )
     if not os.path.exists(path):
         os.makedirs(path)
-        np.savez(path+'meta_data.npz', exp_id=exp_id, uext_array=uext_array, ie_ratio_array=ie_ratio_array)
+    np.savez(path+'meta_data.npz', exp_id=exp_id, uext_array=uext_array, ie_ratio_array=ie_ratio_array, delay_array=delay_array)
+    
+    # MAIN SIMULATION
+    spk_count, spk_history, t, pop_spk_count = run(config) 
+    #
     
     file_name = str(indx).zfill(3) + '.npz'
+    np.savez(path+file_name, config=config, t=t, spk_count=spk_count, pop_spk_count=pop_spk_count)
+    #np.savez(path+file_name, config=config, t=t, spk_count=spk_count, spk_history=spk_history)
     
-    #np.savez(path +'{}.npz'.format(file_name), config=config, mnn_mean=u, mnn_std=s)
-    np.savez(path+file_name, config=config, t=t, spk_count=spk_count) #, spk_history=spk_history)
     print('Results saved to: '+path+file_name)
-    #with open(path +'{}_config.json'.format(file_name),'w') as f:
-    #    json.dump(config,f)
-
-    #runfile('./batch_processor.py', args = '0 test', wdir='./')
     quick_plots(config, spk_history, path, indx) # don't save spike history; takes too much space!
 

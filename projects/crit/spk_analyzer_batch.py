@@ -23,23 +23,28 @@ def load_data(path, indx=None):
             dat = np.load(path+f, allow_pickle=True)
             return dat
 
-path = './projects/crit/runs/snn_vary_ie_ratio_spont_bgrate_40/'  # with corr
+#path = './projects/crit/runs/snn_vary_ie_ratio_spont_bgrate_40/'  # with corr
+path = './projects/crit/runs/2024_mar_25_snn_spont_bg40_delay_1.5/'
+var_of_interest_name = 'ie_ratio'
+
+#path = './projects/crit/runs/snn_vary_delay_spont_bgrate_40_ieratio_6/'  # with corr
+#var_of_interest_name = 'delay_snn'
 
 meta_dat = load_data(path) #load meta data
 print(meta_dat)
 
-
-# uext = []
-# ie_ratio = []
-# N = []
-# degree_hetero = []
-# w = []
-
-try:
+if var_of_interest_name == 'ie_ratio':
     uext = meta_dat['uext_array']
-    ie_ratio = meta_dat['ie_ratio_array']
-    size = (len(uext), len(ie_ratio))
-except:
+    var_of_interest = meta_dat['ie_ratio_array']
+    xlabel = 'IE weight ratio'
+    size = (len(uext), len(var_of_interest))
+
+elif var_of_interest_name == 'delay_snn':
+    uext = meta_dat['uext_array']
+    var_of_interest = meta_dat['delay_snn_array']
+    xlabel = 'Synaptic delay (ms)'
+    size = (len(uext), len(var_of_interest))
+else:
     pass
 
 # try:
@@ -77,7 +82,7 @@ ff_pop_std = np.zeros(size)
 
 # osc_amp = np.zeros(size)
 # osc_amp_ff = np.zeros(size)
-# osc_freq = np.zeros(size)
+osc_freq = np.zeros(size)
 
 for i in range(size[0]):
     print('Processing... {}/{}'.format(i, size[0]))
@@ -157,6 +162,28 @@ for i in range(size[0]):
         plt.savefig(path+'pop_firing_rate_{}_{}.png'.format(i,j))
         plt.close('all')
 
+        
+        # Power spectrum analysis
+        sampling_freq = 1e3/(binwidth*config['dt_snn']) # Hz
+        freq, psd = sp.signal.welch(pop_firing_rate, fs=sampling_freq)
+        osc_freq[i,j] = freq[np.argmax(psd)]
+
+        plt.figure()
+        plt.subplot(2,1,1)
+        plt.plot(freq[freq<1e3],psd[freq<1e3])
+        plt.xlabel('Frequency (Hz)')
+        plt.ylabel('psd')
+
+        plt.subplot(2,1,2)
+        plt.loglog(freq[freq<1e3],psd[freq<1e3])
+        plt.xlabel('Frequency (Hz)')
+        plt.ylabel('psd')
+        plt.tight_layout()
+        
+        plt.savefig(path+'power_spectrum_{}_{}.png'.format(i,j))
+        plt.close('all')
+
+
 
 
 #tt = np.linspace(0,t[-1],num_bins)
@@ -169,25 +196,36 @@ mean_pop_std = np.squeeze(mean_pop_std)
 ff_pop_std = np.squeeze(ff_pop_std)
 
 plt.figure()
-plt.plot(ie_ratio,mean_pop_avg)
-plt.fill_between(ie_ratio, mean_pop_avg - mean_pop_std, mean_pop_avg + mean_pop_std, alpha=0.3)
+plt.plot(var_of_interest,mean_pop_avg)
+plt.fill_between(var_of_interest, mean_pop_avg - mean_pop_std, mean_pop_avg + mean_pop_std, alpha=0.3)
 #plt.ylim([0,200])
-plt.xlabel('IE weight ratio')
+plt.xlabel(xlabel)
 plt.ylabel('Mean firing rate (sp/s)')
 plt.savefig(path+'mean_firing_rate_vs_IE_ratio.png')
 
 plt.figure()
-plt.plot(ie_ratio,ff_pop_avg)
+plt.plot(var_of_interest,ff_pop_avg)
 #plt.fill_between(ie_ratio, ff_pop_avg - ff_pop_std, ff_pop_avg + ff_pop_std, alpha=0.3)
 #plt.ylim([0,2])
-plt.xlabel('IE weight ratio')
+plt.xlabel(xlabel)
 plt.ylabel('Fano factor')
 plt.savefig(path+'fano_factor_vs_IE_ratio.png')
 plt.close('all')
 
-print('ie_ratio', ie_ratio)
+print(var_of_interest_name, var_of_interest)
 print('avg pop firing rate', mean_pop_avg)
-        
+
+plt.figure()
+osc_freq=np.squeeze(osc_freq)
+plt.plot(var_of_interest, osc_freq)
+plt.xlabel(xlabel)
+plt.ylabel('Osc. frequency (Hz)')
+plt.savefig(path+'osc_frequency.png')
+plt.close('all')
+
+print('Osillation frequenciese', osc_freq)
+
+
 #         u = dat['mnn_mean']
 #         s = dat['mnn_std']
 #         ff = s**2/u

@@ -10,6 +10,16 @@ from projects.crit.static_recurrent_layer import gen_config
 import torch.nn as nn
 from torchvision import transforms
 
+# def merge_bn_param(model, eps=1e-6):
+#     ''' Calculate batchnorm-adjusted average feedforward current'''
+#     bn_weight = model.layers[1].bn_mean.weight  #(hidden size)
+#     bn_bias = model.layers[1].bn_mean.bias #(hidden size)
+#     running_mean = model.layers[1].bn_mean.running_mean #(hidden size)
+#     running_var = model.layers[1].bn_mean.running_var #(hidden size)
+#     scaling_factor = bn_weight/torch.sqrt(running_var+eps) #(hidden size)
+#     current_ff = bn_bias - running_mean*scaling_factor
+#     return current_ff 
+
 # one experiment one class, avoid excessive wrappers.
 class trainer_MLP_static_recurrent_mnist():
     '''
@@ -54,7 +64,7 @@ class trainer_MLP_static_recurrent_mnist():
         elif optimizer_name == 'SGD':
             optimizer = torch.optim.SGD(params, lr= lr, momentum= momentum) #recommended lr: 2
         elif optimizer_name == 'AdamW':
-            optimizer = torch.optim.AdamW(params, lr = lr, amsgrad = True) #recommended lr: 0.1 (Adam requires a much smaller learning rate than SGD otherwise won't converge)
+            optimizer = torch.optim.AdamW(params, lr = lr, amsgrad = True, weight_decay=config['weight_decay']) #recommended lr: 0.1 (Adam requires a much smaller learning rate than SGD otherwise won't converge)
         else:
             print('Invalid optimizer name!')
             return
@@ -89,8 +99,8 @@ class trainer_MLP_static_recurrent_mnist():
                 target = target.to(device)
 
                 # stimulus transduction to firing stats (Poisson stats)
-                input_mean = data*0.1 
-                input_var = data*0.1
+                input_mean = data*config['stim_trans'] 
+                input_var = data*config['stim_trans']
 
                 #input_mean = data*1.0                 # use constant current, no variance
                 #input_var = torch.zeros(input_mean.shape)
@@ -99,6 +109,21 @@ class trainer_MLP_static_recurrent_mnist():
                 #output_mean = model.forward(input_mean)
                 
                 loss = criterion(output_mean, target)
+
+                # Calculate the regularization term (L2 regularization)
+                #regularization_term = sum(torch.norm(param)**2 for param in model.parameters())
+                if config['reg_factor']:
+                    #ff_current = merge_bn_param(model)
+                    #regularization_term = torch.sum(ff_current.pow(2.0))
+                    bn_bias = model.layers[1].bn_mean.bias
+                    bn_weight = model.layers[1].bn_mean.weight
+                    regularization_term = torch.sum(bn_bias.pow(2.0) + bn_weight.pow(2.0))
+                    # Add the regularization term to the loss
+                    loss_reg = config['reg_factor']*regularization_term
+                    #print('vanilla loss', loss.item())
+                    #print('regularizer loss', loss_reg.item())
+                    
+                    loss = loss + loss_reg
                 
                 loss.backward()
                 
@@ -133,8 +158,8 @@ class trainer_MLP_static_recurrent_mnist():
                         data = data.view(data.shape[0], -1).to(device) #flatten the image
                         target = target.to(device)
 
-                        input_mean = data*0.1 
-                        input_var = data*0.1
+                        input_mean = data*config['stim_trans'] 
+                        input_var = data*config['stim_trans']
                         #input_mean = data*1.0
                         #input_var = torch.zeros(input_mean.shape)
 
@@ -171,7 +196,7 @@ class trainer_MLP_static_recurrent_mnist():
 
 if __name__ == "__main__":    
     
-    hidden_layer_config = gen_config(N=1250, ie_ratio=4.0, bg_rate=20.0, device='cuda')
+    hidden_layer_config = gen_config(N=1250, ie_ratio=5.0, bg_rate=40.0, device='cpu')
 
     trainer_config = {'sample_size': None,
               'batch_size': 100,
@@ -190,6 +215,8 @@ if __name__ == "__main__":
               'max_grad_norm': None, # gradient clipping. set to None to turn off
               'max_grad_value': None, #may better log it and see if there is any outliers
               'hidden_layer_config': hidden_layer_config, 
+              'reg_factor': 1e-3, # regularization factor in the loss function
+              'stim_trans':0.1, 
         }
     
     torch.cuda.set_device(0)

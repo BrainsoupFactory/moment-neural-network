@@ -21,6 +21,7 @@ def gen_config(batchsize, num_neurons, T_snn, device='cpu', dt_snn=0.01): #gener
         'tau_L' : 20, # membrane time constant
         'tau_E' : 4, # excitatory synaptic time scale (ms)
         'tau_I' : 10, # inhibitory synaptic time scale (ms)
+        'tau_x' : 4, # external input time scale
         'VL' : -60, # leak reverseal potential
         'VE' : 0, # excitatory reversal potential
         'VI' : -80, # inhibitory reversal potential
@@ -58,12 +59,14 @@ class CondInteNFire():
         #self.WT = WT #transpose of synaptic weight matrix
         self.exc_input_gen = input_gen[0] # input generator, class object
         self.inh_input_gen = input_gen[1]
+        self.x_input_gen = input_gen[2]
         self.discard = config['discard']
         
         # neuronal parameters
         self.tau_L = config['tau_L'] # membrane time constant
         self.tau_E = config['tau_E'] # excitatory synaptic time scale (ms)
         self.tau_I = config['tau_I'] # inhibitory synaptic time scale (ms)
+        self.tau_x = config['tau_x'] # external input time scale (ms)
         self.VL = config['VL'] # leak reverseal potential
         self.VE = config['VE'] # excitatory reversal potential
         self.VI = config['VI'] # inhibitory reversal potential
@@ -77,7 +80,7 @@ class CondInteNFire():
         self.sI = 1 #inhibitory conductance; microsiemens
         self.C = 1 # conductance nF
         
-    def forward(self, v, tref, is_spike, je, ji, ext_input, inh_input):
+    def forward(self, v, tref, is_spike, je, ji, jx, ext_input, inh_input, x_input):
         #compute synaptic activation
         if self.tau_E>0:
             je += -je/self.tau_E*self.dt + ext_input
@@ -89,13 +92,20 @@ class CondInteNFire():
         else:
             ji = inh_input
 
+        if self.tau_x>0:
+            jx += -jx/self.tau_x*self.dt + x_input
+        else:
+            jx = x_input
+
         #compute currents
         leak_curr = self.L*(self.VL-v)
         ext_curr = self.L*self.sE*(self.VE-v)*je
         inh_curr = self.L*self.sI*(self.VI-v)*ji
+        x_curr = self.L*jx
         
         #compute voltage
-        v += (leak_curr+ext_curr+inh_curr)*self.dt
+        # TODO: warning: line below doesn't work with instant synapse
+        v += (leak_curr+ext_curr+inh_curr+x_curr)*self.dt
         
         #compute spikes
         is_ref = (tref > 0.0) & (tref < self.Tref)
@@ -124,6 +134,7 @@ class CondInteNFire():
         tref = torch.zeros(self.batchsize, self.num_neurons, device=device) #tracker for refractory period
         je = torch.zeros(self.batchsize, self.num_neurons, device=device)
         ji = torch.zeros(self.batchsize, self.num_neurons, device=device)
+        jx = torch.zeros(self.batchsize, self.num_neurons, device=device)
         v = self.Vres + torch.rand(self.batchsize, self.num_neurons, device=device)*(self.Vth-self.Vres) #initial voltage
         #v = torch.zeros(self.batchsize, self.num_neurons, device=device)
         is_spike = torch.zeros(self.batchsize, self.num_neurons, device=device)
@@ -168,10 +179,11 @@ class CondInteNFire():
             
             exc_input = self.exc_input_gen(self.dt, device=device)
             inh_input = self.inh_input_gen(self.dt, device=device)
+            x_input = self.x_input_gen(self.dt, device=device) # temporary test
             
             with torch.no_grad():
                 
-                v, tref, is_spike, je, ji = self.forward(v, tref, spk_delayed, je,ji, exc_input, inh_input)
+                v, tref, is_spike, je, ji = self.forward(v, tref, spk_delayed, je,ji,jx, exc_input, inh_input, x_input)
             
                 if record_v:
                     V[:,i] = v[0,:].flatten() #saves only 1 sample from the batch to limit memory consumption

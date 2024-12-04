@@ -328,16 +328,16 @@ def run(exp_id, indx, device='cpu', savefile = False):
     input_rate_array = torch.tensor([20,40], device=device).unsqueeze(1)
     
     ie_ratio_array = np.linspace(0, 8.0, 41)
-    mnn_delay_array = np.array([1.5])
+    mnn_delay_array = np.array([1.5/1.168])
     
     X,Y = np.meshgrid(ie_ratio_array, mnn_delay_array)
     ie_ratio = X.flatten()[indx]
     delay = Y.flatten()[indx]
     
     config = gen_config(N=12500, ie_ratio=ie_ratio, bg_rate=0.0, device=device)
-    config['T'] = 100 # ms
+    config['T'] = 400 # ms
     config['dt'] = 0.02 # ms
-    config['tau'] = 1.168 # calibrated time constant in ms
+    config['tau'] = 1 # calibrated time constant in ms
     config['record_ts'] = True
     config['Vth']=20 # no effect for now; using default parameters
     config['Vres']=10
@@ -375,7 +375,7 @@ def run(exp_id, indx, device='cpu', savefile = False):
             'config': config,
             'indx':indx,
             'exp_id':exp_id,
-            'W': W.cpu().numpy(),
+            'W': None, #W.cpu().numpy(), don't save weight, too big, save seed is enough
             'ie_ratio_array': ie_ratio_array,
             'input_rate_array': input_rate_array.cpu().numpy(),
             'mnn_delay_array': mnn_delay_array,

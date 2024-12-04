@@ -147,8 +147,8 @@ class InteNFireRNNtask():
         self.max_num_spks = int(0.15*self.batchsize*self.num_neurons*T)  # stop early if spikes exceed a limit
         
         tref = torch.zeros(self.batchsize, self.num_neurons, device=device) #tracker for refractory period
-        #v = np.random.rand(self.num_neurons,1)*self.Vth #initial voltage
-        v = torch.zeros(self.batchsize, self.num_neurons, device=device)
+        v = torch.rand(self.batchsize, self.num_neurons, device=device)*self.Vth #initial voltage
+        #v = torch.zeros(self.batchsize, self.num_neurons, device=device)
         is_spike = torch.zeros(self.batchsize, self.num_neurons, device=device)
         cum_spk_count = torch.zeros(self.batchsize, self.num_neurons, device=device)
         
