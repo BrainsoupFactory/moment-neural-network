@@ -1,0 +1,21 @@
+tqdm
+torch
+matplotlib
+numpy
+scipy
+pandas
+seaborn
+torchvision
+
+# document requirements
+pandoc
+Jinja2
+sphinx>=5, <8.2.0
+myst-nb
+sphinx_thebe
+sphinx-autodoc-typehints
+sphinx-book-theme>=1.0.1
+sphinx-copybutton>=0.5.0
+sphinx-remove-toctrees
+jupyter-sphinx>=0.3.2
+sphinx-design
