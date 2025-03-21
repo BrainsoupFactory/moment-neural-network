@@ -4,8 +4,6 @@ This is the training code used in the paper entitled "Towards a free-response pa
 
 ## Citation
 
-Arxiv version (Will update once the paper online):
-
 ```
 @article{zhu2025neco,
     author = {Zhu, Zhichao and Qi, Yang and Lu, Wenlian and Wang, Zhigang and Cao, Lu and Feng, Jianfeng},
