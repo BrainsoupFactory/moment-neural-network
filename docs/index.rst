@@ -9,4 +9,20 @@ Moment Neural Network (MNN) documentation
 ----
 
 Installation
+^^^^^^^^^^^^
+
+.. code-block:: bash
+
+   git clone git@github.com:BrainsoupFactory/moment-neural-network.git
+
+
+
 ------------
+
+
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Tutorials
+
+   tutorials/tutorial_moment_activation
