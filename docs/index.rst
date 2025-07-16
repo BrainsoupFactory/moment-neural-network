@@ -10,3 +10,9 @@ Moment Neural Network (MNN) documentation
 
 Installation
 ------------
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+   :caption: Tutorials
+   tutirials/tutorial_moment_activation
