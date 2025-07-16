@@ -22,7 +22,7 @@ Installation
 
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :caption: Tutorials
-   
+
    tutorials/tutorial_moment_activation
