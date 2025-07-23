@@ -26,3 +26,4 @@ Installation
    :caption: Tutorials
 
    tutorials/tutorial_moment_activation
+   tutorials/tutorial_training_mnn

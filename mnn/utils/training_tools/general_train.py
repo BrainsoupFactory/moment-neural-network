@@ -150,14 +150,6 @@ class TrainProcessCollections:
                 cov = torch.diag_embed(torch.abs(data))
             elif getattr(args, 'input_prepare', None) == 'poisson_no_rho':
                 cov = torch.abs(data)
-            elif getattr(args, 'input_prepare', None) == 'cov_embed':
-                cov = torch.sqrt(torch.abs(data))
-                mask = cov > 0.01
-                cov = torch.einsum('b i, b j -> b i j', cov, cov)
-                mask = torch.einsum('b i, b j -> b i j', mask, mask)
-                cov.diagonal(dim1=-2, dim2=-1).fill_(torch.max(cov).item())
-                cov = cov * mask
-                #data = torch.ones_like(data)
             else:
                 cov = None
             
@@ -166,10 +158,6 @@ class TrainProcessCollections:
                 cov = cov + torch.ones_like(cov, device=data.device) * getattr(args, 'background_noise')
             else:
                 cov = cov + torch.eye(data.size(-1), device=data.device) * getattr(args, 'background_noise')
-        if getattr(args, 'unsqueeze_input', None) is not None:
-            data = data.unsqueeze(args.unsqueeze_input)
-            if cov is not None:
-                cov = cov.unsqueeze(args.unsqueeze_input)
         return data, cov
         
     def data2device(self, data, target, args):

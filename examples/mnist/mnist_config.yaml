@@ -7,7 +7,7 @@ MODEL:
   mnn_mlp:
     structure:
       - 784
-      - 1000
+      - 100
 
     num_class: 10
     bn_bias_var: False
@@ -17,14 +17,6 @@ MODEL:
     dropout: ~
     momentum: 0.9
     eps: 1.e-5
-
-  snn_mlp:
-   structure:
-    - 784
-    - 800
-   num_class: 10
-   use_cov: False
-   bn_bias_var: False
 
 CRITERION:
   name: CrossEntropyOnMean
@@ -53,8 +45,7 @@ DATAAUG_VAL:
     - ToTensor
 
 workers: 2
-lr: 0.001
-epochs: 30
+epochs: 1
 bs: 50
 pin_mem: True
 world_size: 1
