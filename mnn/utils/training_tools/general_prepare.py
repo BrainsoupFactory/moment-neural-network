@@ -139,8 +139,7 @@ def prepare_dataloader(args, data_dir='./data/'):
     if args.dataset == 'mnist':
         transform_train = make_transforms_compose(args.DATAAUG_TRAIN)
         transform_val = make_transforms_compose(args.DATAAUG_VAL)
-        train_loader, test_loader = dataloaders.classic_mnist_loader(data_dir, args.bs, args.bs, transform_train=transform_train,
-                                                                        transform_test=transform_val)
+        train_loader, test_loader = dataloaders.classic_mnist_loader(data_dir, args.bs, args.bs, transform_train=transform_train,transform_test=transform_val)
     else:
         train_set, test_set = make_torchvision_dataset(args, data_dir)
         
@@ -150,8 +149,7 @@ def prepare_dataloader(args, data_dir='./data/'):
 
 def make_optimizer(params_group, args):
     if args.distributed and zero_redundancy_optimizer_available:
-        optimizer = ZeroRedundancyOptimizer(params_group, getattr(torch.optim, args.OPTIMIZER['name']),
-                                            **args.OPTIMIZER['args'])
+        optimizer = ZeroRedundancyOptimizer(params_group, getattr(torch.optim, args.OPTIMIZER['name']), **args.OPTIMIZER['args'])
     else:
         optimizer = getattr(torch.optim, args.OPTIMIZER['name'])(params_group, **args.OPTIMIZER['args'])
     return optimizer
