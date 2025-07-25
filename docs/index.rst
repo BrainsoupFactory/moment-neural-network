@@ -27,3 +27,5 @@ Installation
 
    tutorials/tutorial_moment_activation
    tutorials/tutorial_training_mnn
+   tutorials/tutorial_training_mnn_vanilla
+   tutorials/tutorial_EI_network
