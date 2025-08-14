@@ -150,9 +150,62 @@ class InteNFireRNN():
 
         return spk_count, V, t
 
+    def run_adaptive(self, maxt = 100e3, avgsc=50, device = 'cpu', show_message = False):
+        '''Simulate integrate and fire neurons
+        T = maximum simulation duration (ms)
+        avgsc = average spike count for stopping policy      
+        '''
+        device=self.device
+        num_timesteps = int(maxt/self.dt)
+        
+        #self.max_num_spks = int(0.15*self.batchsize*self.num_neurons*T)  # stop early if spikes exceed a limit
+        
+        tref = torch.zeros(self.batchsize, self.num_neurons, device=device) #tracker for refractory period
+        v = torch.rand(self.batchsize, self.num_neurons, device=device)*self.Vth #initial voltage
+        is_spike = torch.zeros(self.batchsize, self.num_neurons, device=device)
+        
+        #spk_history = np.empty((self.max_num_spks,3),dtype=np.uint32) # sample_id x neuron_id x time, pre-allocate memory
+        
+        #t = np.arange(0, self.T , self.dt)
+        
+        spk_count = torch.zeros(self.batchsize, self.num_neurons, device=device) # track total number of spikes
+
+        start_time = time.time()
+        i=0
+        criterion = True
+        while criterion:
+            i+=1
+
+            if i % int(1/self.dt)==0: # renew criterion every 1 ms only
+                criterion = spk_count.mean() < avgsc and i<num_timesteps 
+            
+            input_current = self.input_gen.uncorr_gaussian_noise()
+            
+            with torch.no_grad():
+                
+                v, tref, is_spike = self.forward(v, tref, is_spike, input_current)
+            
+                #spk_indices = torch.nonzero(is_spike).to('cpu').numpy().astype(np.uint32) #each row is a 2-tuple (sample_id, neuron_id)
+            spk_count += is_spike 
+            
+            # if total_num_spks+spk_indices.shape[0] > self.max_num_spks:
+            #     print('Total number of spikes have exceeded pre-allocated limit!')  # stop early if spikes exceed a limit
+            #     print('Existing simulation...')
+            #     break
+            #spk_history[total_num_spks:total_num_spks+spk_indices.shape[0], :2] = spk_indices #update sample id and neuron id
+            #spk_history[total_num_spks:total_num_spks+spk_indices.shape[0], 2] = i #update spike time
+            #total_num_spks += spk_indices.shape[0] # update total number of spikes
+
+            if show_message and (i+1) % int(1e3/self.dt) == 0:
+                elapsed_time = (time.time()-start_time)/60
+                print('Simulation time: {:.2f} ms; Time elapsed: {:.2f} min'.format(i*self.dt, elapsed_time ), flush=True)
+        
+        #spk_history = spk_history[:total_num_spks,:] # discard data in pre-allocated but unused memory
+
+        return spk_count, None, None
 
 
-def get_stats_snn(mean_ext,var_ext,w, T_snn=1e3, batchsize=int(100e3)):    
+def get_stats_snn(mean_ext,var_ext,w, T_snn=1e3, batchsize=int(100e3), mode='fixed'):    
     
     config = gen_config(N=2, w=w, mean_ext=mean_ext, var_ext=var_ext, device='cuda')
     config['T_snn']=T_snn
@@ -160,8 +213,11 @@ def get_stats_snn(mean_ext,var_ext,w, T_snn=1e3, batchsize=int(100e3)):
 
     W = gen_synaptic_weight(config) #doesn't take too much time with 1e4 neurons    
     input_gen = InputGenerator(config)
-    snn_model = InteNFireRNN(config, W.T , input_gen)
-    spk_count, V, t = snn_model.run( config['T_snn'] , show_message=False, record_v = False) # ms
+    snn_model = InteNFireRNN(config, W , input_gen)
+    if mode=='fixed':
+        spk_count, V, t = snn_model.run( config['T_snn'] , show_message=False, record_v = False) # ms
+    elif mode=='adaptive':
+        spk_count, V, t = snn_model.run_adaptive( maxt = 100e3, avgsc=50, show_message=True) # ms
 
     mean_firing_rate = torch.mean(spk_count, dim=0)/config['T_snn']
     fano_factor = torch.var(spk_count,dim=0)/torch.mean(spk_count,dim=0)
@@ -288,7 +344,7 @@ def para_sweep_w_mean_var(exp_id='para_sweep_w_mean_var'):
 
 def plot_stats_w_mean_var(exp_id='para_sweep_w_mean_var'):
     path = './projects/rmnn/runs/{}/'.format(exp_id)
-    filename = 'para_sweep_w_mean_var.npz'
+    filename = exp_id+'.npz'
     dat = np.load(path+filename)
     print(list(dat)) #>> ['M', 'FF', 'R', 'w_array', 'mean_array', 'var_array']
     mean_array = dat['mean_array']
@@ -364,11 +420,13 @@ if __name__=='__main__':
     #para_sweep_stats_vs_w(mean_ext=2, var_ext=9)
     #plot_stats_vs_w(mean_ext=2, var_ext=9)
     
-    para_sweep_w_mean_var(exp_id='para_sweep_w_mean_var_longer_time')
-    plot_stats_w_mean_var(exp_id='para_sweep_w_mean_var_longer_time')
+    #para_sweep_w_mean_var(exp_id='para_sweep_w_mean_var_longer_time')
+    #plot_stats_w_mean_var(exp_id='para_sweep_w_mean_var_longer_time')
 
     # to run the script in background and print to log file: -u for instant flush
     #nohup python -u -m projects.rmnn.two_neuron_recurrent > output.log 2>&1 &
+
+    get_stats_snn(1,9,2, batchsize=int(100e3), mode='adaptive')
 
     
 
