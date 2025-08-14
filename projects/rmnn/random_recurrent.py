@@ -77,7 +77,7 @@ class InteNFireRNN():
         self.dt = config['dt_snn'] #integration time step (ms)
         self.num_neurons = config['N']      
         self.batchsize = config['batchsize']
-        self.W = W #transpose of synaptic weight matrix
+        self.W = W #synaptic weight matrix
         self.input_gen = input_gen # input generator, class object    
         self.device=config['device']    
         
@@ -231,80 +231,7 @@ class RecurrentMNN():
         else:
             return u, c
     
-    def run_experimental(self, ff_mean, ff_var):
-        '''# 
-        UNDER CONSTRUCTION
-        '''
-        print('Using experimental equation of motion...')
-        self.nsteps = int(self.T/self.dt)
-        self.batchsize = ff_mean.shape[0]
-        #ff_mean = ff_mean#.unsqueeze(-1)
-        #ff_var = ff_var#.unsqueeze(-1)
 
-        # initial condition
-        u = torch.zeros(self.batchsize,self.N, device=ff_mean.device) #just 1D array, no column/row 
-        c = torch.eye(self.N, device=ff_mean.device).unsqueeze(0).expand(self.batchsize, -1, -1)
-        
-        if self.record_ts: # cached data for synaptic delay
-            U = torch.zeros(self.batchsize, self.N, self.nsteps, device='cpu')
-            C = torch.zeros(self.batchsize, self.N, self.N, self.nsteps, device='cpu')
-        #     Ubar = U.clone()
-        #     Sbar = S.clone()
-    
-        a = self.dt/self.tau
-        #I = torch.eye(self.N, device=ff_mean.device).unsqueeze(0).expand(self.batchsize, -1, -1)
-        #dB = (-I+self.W)*self.dt
-        
-        for i in range(self.nsteps):
-            if i % int(self.nsteps/10) == 0:
-                print('Running {}/{}...'.format(i,self.nsteps))
-            
-            # !!!!!!!!!! somehow self.W instead of self.W.T gives the right result??? HOW???
-            curr_mean = torch.mm(u, self.W) + ff_mean
-            # !!!!!!!!!!
-            curr_var = torch.einsum('ni,bij,nj->bn', self.W, c, self.W) + ff_var
-            #temp = torch.matmul(self.W,c)
-            #temp = torch.matmul(temp, self.W.T) # <-- try slow method
-            #curr_var = torch.diagonal(temp, dim1=1,dim2=2)+ ff_var 
-            curr_std = torch.sqrt( curr_var )
-
-            curr_mean = curr_mean.cpu().numpy()
-            curr_std = curr_std.cpu().numpy()
-            ma_mean = self.ma.forward_fast_mean(curr_mean, curr_std)
-            ma_std = self.ma.forward_fast_std(curr_mean, curr_std, ma_mean)
-            ma_chi = self.ma.forward_fast_chi(curr_mean, curr_std, ma_mean, ma_std)
-            lrc = ma_chi*ma_std/(curr_std+1e-16) #linear response
-            ma_mean = torch.tensor(ma_mean).to('cuda')
-            ma_std = torch.tensor(ma_std).to('cuda')
-            lrc = torch.tensor(lrc).to('cuda')
-
-            temp = lrc.unsqueeze(-1)*torch.matmul(self.W, c)
-            #temp += lrc.unsqueeze(-1)*self.W.unsqueeze(0)*ma_mean.unsqueeze(1)
-            ma_cov = temp+temp.transpose(1, 2)
-            #ma_cov += lrc.unsqueeze(-1)*lrc.unsqueeze(-2)*torch.diag_embed(ff_var)  # add external input variance
-            #ma_cov = ma_cov/2
-            ma_cov = torch.diagonal_scatter(ma_cov, ma_std.pow(2.0), dim1=1, dim2=2) # set diagonal to exact solution
-            
-            #clamped_var = torch.tensor([0.01577413, 0.01524222, 0.015692,0.01538382, 0.01537232, 0.01536995],device=ma_cov.device)
-            #clamped_var = clamped_var.unsqueeze(0).expand(self.batchsize, -1)
-            #ma_cov = torch.diagonal_scatter(ma_cov, clamped_var, dim1=1, dim2=2)
-            
-
-            # evolve one step in time
-            u = (1-a)*u + a*ma_mean
-            c = (1-a)*c + a*ma_cov
-
-            if self.record_ts: #save time series data
-                U[:,:,i] = u.cpu()
-                C[:,:,:,i] = c.cpu()
-            #     Ubar[:,:,i] = curr_mean.cpu()
-            #     Sbar[:,:,i] = curr_std.cpu()
-
-         # output the variance instead std
-        if self.record_ts: # use this if loss takes in multiple time steps.
-            return u, c, U, C
-        else:
-            return u, c
 
 def rmnn_debug():
     config = gen_config(N=2, w=4, mean_ext=1, var_ext=1, device='cuda')
@@ -364,7 +291,7 @@ def rmnn_debug():
 def get_stats_snn(config, W):    
 
     input_gen = InputGenerator(config)
-    snn_model = InteNFireRNN(config, W.T , input_gen)
+    snn_model = InteNFireRNN(config, W , input_gen)
     spk_count, V, t = snn_model.run( config['T_snn'] , show_message=False, record_v = False) # ms
 
     mean_firing_rate = torch.mean(spk_count, dim=0)/config['T_snn']
@@ -378,8 +305,8 @@ def get_stats_mnn(config, W):
     ext_mean = config['mean_ext']*torch.ones(2,config['N'],device=config['device']) # keep redundant batch dimension to avoid bugs
     ext_var = config['var_ext']*torch.ones(2,config['N'],device=config['device'])
     
-    #out_mean, out_cov = rec_mnn.run( ext_mean, ext_var )
-    out_mean, out_cov = rec_mnn.run_experimental( ext_mean, ext_var )
+    out_mean, out_cov = rec_mnn.run( ext_mean, ext_var )
+    #out_mean, out_cov = rec_mnn.run_experimental( ext_mean, ext_var )
     
     out_var = out_cov.diagonal(dim1=1, dim2=2)
     out_FF = out_var/(1e-16+out_mean)
@@ -404,16 +331,14 @@ def rand_rmnn_debug(mean_ext=0.5, var_ext=9, flush_snn=True):
     if flush_snn: # rerun SNN results
         W = gen_synaptic_weight(config, type='random')
         W = W/np.sqrt(num_neurons/2) # when N=2, scaling = 1 
-        #W = (W+W.T)/2 # try symmetric matrix for debugging
-
+        
         snn_mean, snn_ff, snn_corr_coef = get_stats_snn(config, W)
         np.savez(path+snn_save, snn_mean=snn_mean, snn_ff=snn_ff, snn_corr_coef=snn_corr_coef, w=w, mean_ext=mean_ext, var_ext=var_ext, W=W.cpu().numpy())
     else:
         dat = np.load(path+snn_save)
         snn_mean, snn_ff, snn_corr_coef = dat['snn_mean'], dat['snn_ff'], dat['snn_corr_coef']
         W = dat['W']
-        #config=dat['config']
-    print(snn_ff*snn_mean) # get the true values of variance
+    
     W = torch.tensor(W, device=config['device'])
     mnn_mean, mnn_ff, mnn_corr = get_stats_mnn(config, W)   
     mnn_save = 'mnn_mean_ext_{}_var_ext_{}.npz'.format(mean_ext,var_ext)
@@ -581,10 +506,10 @@ if __name__=='__main__':
     #para_sweep_rand_net_w()
     #plot_rand_net_w()
 
-    rand_rmnn_debug(mean_ext=1, var_ext=16, flush_snn=False)
+    rand_rmnn_debug(mean_ext=1.04, var_ext=16, flush_snn=True)
 
     # to run the script in background and print to log file: -u for instant flush
-    #nohup python -u -m projects.rmnn.two_neuron_recurrent > output.log 2>&1 &
+    #nohup python -u -m projects.rmnn.random_recurrent > output.log 2>&1 &
 
     
 
