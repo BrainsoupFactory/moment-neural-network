@@ -377,122 +377,214 @@ def rand_rmnn_debug(mean_ext=0.5, var_ext=9, flush_snn=True):
 
     return
 
-def para_sweep_rand_net_w(exp_id='para_sweep_rand_net_w', mean_ext=0.5, var_ext=9):
+# def para_sweep_rand_net_w(exp_id='para_sweep_rand_net_w', mean_ext=0.5, var_ext=9):
 
-    num_neurons = 32
-    m = 4
-    w_array = np.linspace(0,10,m)
+#     num_neurons = 32
+#     m = 11
+#     w_array = np.linspace(0,10,m)
 
-    M = np.zeros((num_neurons,m,2))
-    FF = np.zeros((num_neurons,m,2))
-    R = np.zeros((num_neurons,num_neurons,m,2))
+#     M = np.zeros((num_neurons,m,2))
+#     FF = np.zeros((num_neurons,m,2))
+#     R = np.zeros((num_neurons,num_neurons,m,2))
 
-    for i in range(m):
-        print('Running... {}/{}'.format( i+1,m))
-        config = gen_config(N=num_neurons, w=w_array[i], mean_ext=mean_ext, var_ext=var_ext, device='cuda')
-        config['T_snn']=1e3
-        config['batchsize']= int(100e3)
+#     for i in range(m):
+#         print('Running... {}/{}'.format( i+1,m))
+#         config = gen_config(N=num_neurons, w=w_array[i], mean_ext=mean_ext, var_ext=var_ext, device='cuda')
+#         config['T_snn']=1e3
+#         config['batchsize']= int(100e3)
 
-        W = gen_synaptic_weight(config, type='random')
-        W = W/np.sqrt(num_neurons/2) # when N=2, scaling = 1 
+#         W = gen_synaptic_weight(config, type='random')
+#         W = W/np.sqrt(num_neurons/2) # when N=2, scaling = 1 
 
-        snn_mean, snn_ff, snn_corr_coef = get_stats_snn(config, W)
-        M[:,i,0] = snn_mean
-        FF[:,i,0] = snn_ff
-        R[:,:,i,0] = snn_corr_coef
+#         snn_mean, snn_ff, snn_corr_coef = get_stats_snn(config, W)
+#         M[:,i,0] = snn_mean
+#         FF[:,i,0] = snn_ff
+#         R[:,:,i,0] = snn_corr_coef
 
-        mnn_mean, mnn_ff, mnn_corr = get_stats_mnn(config, W)
-        M[:,i,1] = mnn_mean[0,:]
-        FF[:,i,1] = mnn_ff[0,:]
-        R[:,:,i,1] = mnn_corr[0,:,:]
+#         mnn_mean, mnn_ff, mnn_corr = get_stats_mnn(config, W)
+#         M[:,i,1] = mnn_mean[0,:]
+#         FF[:,i,1] = mnn_ff[0,:]
+#         R[:,:,i,1] = mnn_corr[0,:,:]
     
-    path = './projects/rmnn/runs/{}/'.format(exp_id)
-    os.makedirs(path, exist_ok=True)
-    filename = 'mean_ext_{}_var_ext_{}_mk2.npz'.format(mean_ext,var_ext)
-    np.savez(path+filename, M=M, FF=FF, R=R, w_array=w_array, mean_ext=mean_ext, var_ext=var_ext, config=config)
-    return
+#     path = './projects/rmnn/runs/{}/'.format(exp_id)
+#     os.makedirs(path, exist_ok=True)
+#     filename = 'mean_ext_{}_var_ext_{}_mk2.npz'.format(mean_ext,var_ext)
+#     np.savez(path+filename, M=M, FF=FF, R=R, w_array=w_array, mean_ext=mean_ext, var_ext=var_ext, config=config)
+#     return
 
-def plot_rand_net_w(exp_id='para_sweep_rand_net_w', mean_ext=0.5, var_ext=9):
-    path = './projects/rmnn/runs/{}/'.format(exp_id)
-    filename = 'mean_ext_{}_var_ext_{}_mk2.npz'.format(mean_ext,var_ext)
-    dat = np.load(path+filename)
-    w_array = dat['w_array']
-    M, FF, R = dat['M'], dat['FF'], dat['R']
-    plt.figure(figsize=(3.5*3,3.5))
-    plt.suptitle('mean_ext={}, var_ext={}'.format(mean_ext,var_ext), fontsize=12, y=0.96)
-    plt.subplot(1,3,1)
-    for i in range(len(w_array)):
-        plt.plot(M[:,i,1], M[:,i,0],'.')
-        if i>3: break
+# def plot_rand_net_w(exp_id='para_sweep_rand_net_w', mean_ext=0.5, var_ext=9):
+#     path = './projects/rmnn/runs/{}/'.format(exp_id)
+#     filename = 'mean_ext_{}_var_ext_{}_mk2.npz'.format(mean_ext,var_ext)
+#     dat = np.load(path+filename)
+#     w_array = dat['w_array']
+#     M, FF, R = dat['M'], dat['FF'], dat['R']
+#     plt.figure(figsize=(3.5*3,3.5))
+#     plt.suptitle('mean_ext={}, var_ext={}'.format(mean_ext,var_ext), fontsize=12, y=0.96)
+#     plt.subplot(1,3,1)
+#     for i in range(len(w_array)):
+#         plt.plot(M[:,i,1], M[:,i,0],'.')
+#         if i>3: break
         
-    plt.xlabel('MNN')
-    plt.ylabel('SNN')
-    plt.title('Mean firing rate')
-    plt.legend(['w={}'.format(w_array[i]) for i in range(4)])
-    plt.subplot(1,3,2)
-    for i in range(len(w_array)):
-        plt.plot(FF[:,i,1],FF[:,i,0], '.')
-        if i>3: break
+#     plt.xlabel('MNN')
+#     plt.ylabel('SNN')
+#     plt.title('Mean firing rate')
+#     plt.legend(['w={}'.format(w_array[i]) for i in range(4)])
+#     plt.subplot(1,3,2)
+#     for i in range(len(w_array)):
+#         plt.plot(FF[:,i,1],FF[:,i,0], '.')
+#         if i>3: break
         
-    plt.xlabel('MNN')
-    plt.ylabel('SNN')
-    plt.title('Fano factor')
-    plt.subplot(1,3,3)
-    indx=np.triu_indices(R.shape[0],k=1)
-    for i in range(len(w_array)):
-        plt.plot(R[:,:,i,1][indx],R[:,:,i,0][indx], '.')
-        if i>3: break
+#     plt.xlabel('MNN')
+#     plt.ylabel('SNN')
+#     plt.title('Fano factor')
+#     plt.subplot(1,3,3)
+#     indx=np.triu_indices(R.shape[0],k=1)
+#     for i in range(len(w_array)):
+#         plt.plot(R[:,:,i,1][indx],R[:,:,i,0][indx], '.')
+#         if i>3: break
         
-    plt.xlabel('MNN')
-    plt.ylabel('SNN')
-    plt.title('Corr. coef.')
-    plt.tight_layout()
-    plt.savefig(path+'mean_ext_{}_var_ext_{}_mk2.pdf'.format(mean_ext,var_ext))
+#     plt.xlabel('MNN')
+#     plt.ylabel('SNN')
+#     plt.title('Corr. coef.')
+#     plt.tight_layout()
+#     plt.savefig(path+'mean_ext_{}_var_ext_{}_mk2.pdf'.format(mean_ext,var_ext))
 
-def fixed_pt_eq(xy, ma, w, mean_ext, var_ext):
-    curr_mean = w*xy[0] + mean_ext
-    curr_std = np.sqrt(w*w*xy[1]+var_ext)
-    mean_out = ma.forward_fast_mean(curr_mean, curr_std)
-    std_out = ma.forward_fast_std(curr_mean,curr_std,mean_out) #<-- probably in correct.
-    var_out = std_out**2
-    return -xy[0]+mean_out, -xy[1]+var_out
+# def fixed_pt_eq(xy, ma, w, mean_ext, var_ext):
+#     curr_mean = w*xy[0] + mean_ext
+#     curr_std = np.sqrt(w*w*xy[1]+var_ext)
+#     mean_out = ma.forward_fast_mean(curr_mean, curr_std)
+#     std_out = ma.forward_fast_std(curr_mean,curr_std,mean_out) #<-- probably in correct.
+#     var_out = std_out**2
+#     return -xy[0]+mean_out, -xy[1]+var_out
 
 
-def para_sweep_w_mean_var(exp_id='para_sweep_w_mean_var'):
+def para_sweep_rec_rand_mean_var(exp_id='para_sweep_rec_rand_mean_var'):
     
     mean_array = np.linspace(-0.5,2,6)
     var_array = np.linspace(0.5,3,6)**2
-    w_array = np.linspace(-5,5,11)
+    w = 5
+    num_neurons=32
 
-    arr_shape = (len(mean_array), len(var_array),len(w_array))
+    arr_shape = (len(mean_array), len(var_array))
     m = np.prod(arr_shape)
     
-    M = np.zeros((m,2))
-    FF = np.zeros((m,2))
-    R = np.zeros((m,2))
+    M = np.zeros((m,num_neurons,2))
+    FF = np.zeros((m,num_neurons,2))
+    R = np.zeros((m,num_neurons,num_neurons,2))
 
     for indx in range(m):
         print('Running... {}/{}'.format( indx+1,m))
 
-        i,j,k = np.unravel_index(indx, arr_shape)
+        i,j = np.unravel_index(indx, arr_shape)
 
-        snn_mean, snn_ff, snn_corr_coef = get_stats_snn(mean_array[i],var_array[j],w_array[k])
-        M[indx,0] = snn_mean.mean()
-        FF[indx,0] = snn_ff.mean()
-        R[indx,0] = snn_corr_coef
+        config = gen_config(N=num_neurons, w=w, mean_ext=mean_array[i], var_ext=var_array[j], device='cuda')
+        config['T_snn']=10e3
+        config['batchsize']= int(100e3)
+        W = gen_synaptic_weight(config, type='random')
+        W = W/np.sqrt(num_neurons/2) # when N=2, scaling = 1 
 
-        mnn_mean, mnn_ff, mnn_corr = get_stats_mnn(mean_array[i],var_array[j],w_array[k])
-        M[indx,1] = mnn_mean
-        FF[indx,1] = mnn_ff
-        R[indx,1] = mnn_corr
+        snn_mean, snn_ff, snn_corr_coef = get_stats_snn(config, W)
+        
+        M[indx,:,0] = snn_mean
+        FF[indx,:,0] = snn_ff
+        R[indx,:,:,0] = snn_corr_coef
+
+        mnn_mean, mnn_ff, mnn_corr = get_stats_mnn(config, W)
+        M[indx,:,1] = mnn_mean[0,:]
+        FF[indx,:,1] = mnn_ff[0,:]
+        R[indx,:,:,1] = mnn_corr[0,:,:]
     
     path = './projects/rmnn/runs/{}/'.format(exp_id)
     os.makedirs(path, exist_ok=True)
     filename = exp_id+'.npz'
-    np.savez(path+filename, M=M, FF=FF, R=R, w_array=w_array, mean_array=mean_array, var_array=var_array)
+    np.savez(path+filename, M=M, FF=FF, R=R, w=w, mean_array=mean_array, var_array=var_array)
     return
 
+def plot_rec_rand_mean_var(exp_id='para_sweep_rec_rand_mean_var'):
+    path = './projects/rmnn/runs/{}/'.format(exp_id)
+    filename = exp_id+'.npz'
+    dat = np.load(path+filename)
+    #print(list(dat)) >> ['M', 'FF', 'R', 'w', 'mean_array', 'var_array']
+    num_neurons = 32
 
+    mean_array = dat['mean_array']
+    var_array = dat['var_array']
+    #w_array = dat['w_array']
+    M, FF, R = dat['M'], dat['FF'], dat['R']
+    
+    M = M.reshape(len(mean_array), len(var_array), num_neurons , 2)
+    FF=FF.reshape(len(mean_array), len(var_array), num_neurons , 2)
+    R=R.reshape(len(mean_array), len(var_array), num_neurons , num_neurons, 2)
+    shape = (len(mean_array), len(var_array))
+
+    # plot mean
+    panel = 0
+    plt.figure(figsize=(12,10))
+    plt.suptitle('Mean firing rate (sp/s)', fontsize=18, y=0.99)
+    for i in range(shape[0]):
+        for j in range(shape[1]):
+            panel+=1
+            plt.subplot(shape[0],shape[1], panel)
+            x=1e3*M[i,j,:,1]
+            y=1e3*M[i,j,:,0]
+            plt.plot(x,y , '.k')
+            plt.plot([x.min(), x.max()],[x.min(), x.max()], color='gray')
+            if y.max()<0.1: # firing rate is too low
+                plt.ylim([-0.01,0.1])
+            # if i==5:
+            #     plt.xlabel('MNN')
+            if i==0:
+                plt.title('ext_var={}'.format(var_array[j]))
+            if j==0:
+                plt.ylabel('ext_mean={}'.format(mean_array[i]))
+    plt.tight_layout()
+    plt.savefig(path+'mean_firing_rate_w_mean_var.pdf')
+
+    panel = 0
+    plt.figure(figsize=(12,10))
+    plt.suptitle('Fano factor', fontsize=18, y=0.99)
+    for i in range(shape[0]):
+        for j in range(shape[1]):
+            panel+=1
+            plt.subplot(shape[0],shape[1], panel)
+            x = FF[i,j,:,1]
+            y = FF[i,j,:,0]
+            plt.plot(x,y , '.k')
+            plt.plot([x.min(), x.max()],[x.min(), x.max()], color='gray')
+            plt.axis('equal')
+            # if i==5:
+            #     plt.xlabel('MNN')
+            if i==0:
+                plt.title('ext_var={}'.format(var_array[j]))
+            if j==0:
+                plt.ylabel('ext_mean={}'.format(mean_array[i]))
+    plt.tight_layout()
+    plt.savefig(path+'fano_factor_w_mean_var.pdf')
+            
+
+    panel = 0
+    indx = np.triu_indices(num_neurons, k=1)
+    plt.figure(figsize=(12,10))
+    plt.suptitle('Correlation coefficient', fontsize=18, y=0.99)
+    for i in range(shape[0]):
+        for j in range(shape[1]):
+            panel+=1
+            plt.subplot(shape[0],shape[1], panel)
+            y = R[i,j,:,:,0][indx]
+            x = R[i,j,:,:,1][indx]
+            plt.plot(x,y, '.k')
+            plt.plot([x.min(), x.max()],[x.min(), x.max()], color='gray')
+            plt.axis('equal')
+            # if i==5:
+            #     plt.xlabel('w')
+            if i==0:
+                plt.title('ext_var={}'.format(var_array[j]))
+            if j==0:
+                plt.ylabel('ext_mean={}'.format(mean_array[i]))
+    plt.tight_layout()
+    plt.savefig(path+'corr_coef_w_mean_var.pdf')
+
+    return
 
 if __name__=='__main__':
     torch.set_default_dtype(torch.float64)
@@ -506,7 +598,10 @@ if __name__=='__main__':
     #para_sweep_rand_net_w()
     #plot_rand_net_w()
 
-    rand_rmnn_debug(mean_ext=1.04, var_ext=16, flush_snn=True)
+    #rand_rmnn_debug(mean_ext=1.04, var_ext=16, flush_snn=True)
+
+    #para_sweep_rec_rand_mean_var('rec_rand_mean_var_w5_t10')
+    plot_rec_rand_mean_var('rec_rand_mean_var_w5_t10')
 
     # to run the script in background and print to log file: -u for instant flush
     #nohup python -u -m projects.rmnn.random_recurrent > output.log 2>&1 &
