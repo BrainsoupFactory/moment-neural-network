@@ -33,6 +33,7 @@ def gen_config(N=2, w=0.1, mean_ext=1, var_ext=1, device='cpu'): #generate confi
     'batchsize':1000, # multiple trials for calculating spike count stats
     'T_mnn': 20,
     'dt_mnn': 0.2,
+    'p': None, # probability of connection
     }
 
     return config
@@ -40,10 +41,17 @@ def gen_config(N=2, w=0.1, mean_ext=1, var_ext=1, device='cpu'): #generate confi
 def gen_synaptic_weight(config, type='random'):
     if type == 'random':
         W = torch.randn(config['N'],config['N'], device=config['device'])*config['w']
-        W.fill_diagonal_(0)
     elif type == 'fixed':
         W = torch.ones(config['N'],config['N'], device=config['device'])*config['w']
-        W.fill_diagonal_(0)
+    
+    W.fill_diagonal_(0)
+    
+    if config['p'] is not None:
+        W = W/np.sqrt(W.shape[0]*config['p']) # normalize by avg indegree
+        W[torch.rand(W.shape)>config['p']]=0
+    else:
+        W = W/np.sqrt(W.shape[0]) # normalize by # of neurons
+
     return W
 
 
@@ -101,7 +109,7 @@ class InteNFireRNN():
         
     
     
-    def run(self, T, device = 'cpu', record_v = False, show_message = False):
+    def run(self, T, record_v = False, show_message = False):
         '''Simulate integrate and fire neurons
         T = simulation duration (ms)        
         '''
@@ -292,7 +300,7 @@ def get_stats_snn(config, W):
 
     input_gen = InputGenerator(config)
     snn_model = InteNFireRNN(config, W , input_gen)
-    spk_count, V, t = snn_model.run( config['T_snn'] , show_message=False, record_v = False) # ms
+    spk_count, V, t = snn_model.run( config['T_snn'] , show_message=True, record_v = False) # ms
 
     mean_firing_rate = torch.mean(spk_count, dim=0)/config['T_snn']
     fano_factor = torch.var(spk_count,dim=0)/torch.mean(spk_count,dim=0)
@@ -330,7 +338,6 @@ def rand_rmnn_debug(mean_ext=0.5, var_ext=9, flush_snn=True):
 
     if flush_snn: # rerun SNN results
         W = gen_synaptic_weight(config, type='random')
-        W = W/np.sqrt(num_neurons/2) # when N=2, scaling = 1 
         
         snn_mean, snn_ff, snn_corr_coef = get_stats_snn(config, W)
         np.savez(path+snn_save, snn_mean=snn_mean, snn_ff=snn_ff, snn_corr_coef=snn_corr_coef, w=w, mean_ext=mean_ext, var_ext=var_ext, W=W.cpu().numpy())
@@ -394,8 +401,7 @@ def rand_rmnn_debug(mean_ext=0.5, var_ext=9, flush_snn=True):
 #         config['batchsize']= int(100e3)
 
 #         W = gen_synaptic_weight(config, type='random')
-#         W = W/np.sqrt(num_neurons/2) # when N=2, scaling = 1 
-
+#         
 #         snn_mean, snn_ff, snn_corr_coef = get_stats_snn(config, W)
 #         M[:,i,0] = snn_mean
 #         FF[:,i,0] = snn_ff
@@ -481,7 +487,6 @@ def para_sweep_rec_rand_mean_var(exp_id='para_sweep_rec_rand_mean_var'):
         config['T_snn']=10e3
         config['batchsize']= int(100e3)
         W = gen_synaptic_weight(config, type='random')
-        W = W/np.sqrt(num_neurons/2) # when N=2, scaling = 1 
 
         snn_mean, snn_ff, snn_corr_coef = get_stats_snn(config, W)
         
@@ -563,15 +568,17 @@ def plot_rec_rand_mean_var(exp_id='para_sweep_rec_rand_mean_var'):
             
 
     panel = 0
-    indx = np.triu_indices(num_neurons, k=1)
+    idx,idy = np.triu_indices(num_neurons, k=1)
+    subsamp = np.random.choice(len(idx), 100, replace=False)
+    idx,idy = idx[subsamp],idy[subsamp]
     plt.figure(figsize=(12,10))
     plt.suptitle('Correlation coefficient', fontsize=18, y=0.99)
     for i in range(shape[0]):
         for j in range(shape[1]):
             panel+=1
             plt.subplot(shape[0],shape[1], panel)
-            y = R[i,j,:,:,0][indx]
-            x = R[i,j,:,:,1][indx]
+            y = R[i,j,:,:,0][idx,idy]
+            x = R[i,j,:,:,1][idx,idy]
             plt.plot(x,y, '.k')
             plt.plot([x.min(), x.max()],[x.min(), x.max()], color='gray')
             plt.axis('equal')
@@ -583,6 +590,196 @@ def plot_rec_rand_mean_var(exp_id='para_sweep_rec_rand_mean_var'):
                 plt.ylabel('ext_mean={}'.format(mean_array[i]))
     plt.tight_layout()
     plt.savefig(path+'corr_coef_w_mean_var.pdf')
+
+    return
+
+def para_sweep_rec_rand_p(exp_id='para_sweep_rec_rand_p'):
+    
+    #mean_array = np.linspace(-0.5,2,6)
+    #var_array = np.linspace(0.5,3,6)**2
+    p_array = np.linspace(0,1,11)
+    mean_ext = 0.5
+    var_ext = 9.0
+    w = 10
+    num_neurons=1000
+
+    #arr_shape = (len(mean_array), len(var_array))
+    #m = np.prod(arr_shape)
+    m = len(p_array)
+
+    M = np.zeros((m,num_neurons,2))
+    FF = np.zeros((m,num_neurons,2))
+    R = np.zeros((m,num_neurons,num_neurons,2))
+
+    for indx in range(m):
+        print('Running... {}/{}'.format( indx+1,m))
+
+        #i,j = np.unravel_index(indx, arr_shape)
+
+        config = gen_config(N=num_neurons, w=w, mean_ext=mean_ext, var_ext=var_ext, device='cuda')
+        config['T_snn']=10e3
+        config['batchsize']= int(10e3)
+        config['p'] = p_array[indx]
+
+        W = gen_synaptic_weight(config, type='random')
+
+        snn_mean, snn_ff, snn_corr_coef = get_stats_snn(config, W)
+        
+        M[indx,:,0] = snn_mean
+        FF[indx,:,0] = snn_ff
+        R[indx,:,:,0] = snn_corr_coef
+
+        mnn_mean, mnn_ff, mnn_corr = get_stats_mnn(config, W)
+        M[indx,:,1] = mnn_mean[0,:]
+        FF[indx,:,1] = mnn_ff[0,:]
+        R[indx,:,:,1] = mnn_corr[0,:,:]
+    
+    path = './projects/rmnn/runs/{}/'.format(exp_id)
+    os.makedirs(path, exist_ok=True)
+    filename = 'rec_rand_p_n{}_w{}'.format(num_neurons,w)+'.npz'
+    np.savez(path+filename, M=M, FF=FF, R=R, w=w, p_array=p_array, config=config)
+    return
+
+def plot_rec_rand_p(exp_id='para_sweep_rec_rand_p', num_neurons=100, w=5):
+    path = './projects/rmnn/runs/{}/'.format(exp_id)
+    filename = 'rec_rand_p_n{}_w{}'.format(num_neurons,w)+'.npz'
+    dat = np.load(path+filename, allow_pickle=True)
+    #print(list(dat)) # >> ['M', 'FF', 'R', 'w', 'p_array']
+    
+    #mean_array = dat['mean_array']
+    #var_array = dat['var_array']
+    #w_array = dat['w_array']
+    p_array = dat['p_array']
+    M, FF, R = dat['M'], dat['FF'], dat['R']
+
+    m = len(p_array)
+    
+    path = './projects/rmnn/runs/{}/plots_n{}_w{}/'.format(exp_id,num_neurons,w)
+    os.makedirs(path, exist_ok=True)
+
+    # plot mean
+    plt.figure(figsize=(12,4))
+    plt.suptitle('Mean firing rate (sp/s)', fontsize=18, y=0.99)
+    for i in range(m):    
+        plt.subplot(2,6, i+1)
+        x=1e3*M[i,:,1]
+        y=1e3*M[i,:,0]
+        plt.plot(x,y , '.k')
+        plt.plot([x.min(), x.max()],[x.min(), x.max()], color='gray')
+        if y.max()<0.1: # firing rate is too low
+            plt.ylim([-0.01,0.1])    
+        plt.title('p={:.1f}'.format(p_array[i]))
+    plt.tight_layout()
+    plt.savefig(path+'mean_firing_rate_p.pdf')
+    
+    plt.figure(figsize=(12,4))
+    plt.suptitle('Fano factor', fontsize=18, y=0.99)
+    for i in range(m):
+        plt.subplot(2,6, i+1)
+        x = FF[i,:,1]
+        y = FF[i,:,0]
+        plt.plot(x,y , '.k')
+        plt.plot([x.min(), x.max()],[x.min(), x.max()], color='gray')
+        plt.axis('equal')
+        # if i==5:
+        #     plt.xlabel('MNN')
+        plt.title('p={:.1f}'.format(p_array[i]))
+    plt.tight_layout()
+    plt.savefig(path+'fano_factor_p.pdf')
+            
+    idx,idy = np.triu_indices(num_neurons, k=1)
+    subsamp = np.random.choice(len(idx), 100, replace=False)
+    idx,idy = idx[subsamp],idy[subsamp]
+    plt.figure(figsize=(12,4))
+    plt.suptitle('Correlation coefficient', fontsize=18, y=0.99)
+    for i in range(m):            
+        plt.subplot(2,6, i+1)
+        y = R[i,:,:,0][idx,idy]
+        x = R[i,:,:,1][idx,idy]
+        plt.plot(x,y, '.k')
+        plt.plot([x.min(), x.max()],[x.min(), x.max()], color='gray')
+        plt.axis('equal')
+        # if i==5:
+        #     plt.xlabel('w')
+        plt.title('p={:.1f}'.format(p_array[i]))
+    plt.tight_layout()
+    plt.savefig(path+'corr_coef_p.pdf')
+
+    # histogram of corr coef
+    indx = np.triu_indices(num_neurons, k=1)
+    plt.figure(figsize=(12,3))
+    plt.suptitle('Histogram, correlation coefficient', fontsize=18, y=0.99)
+    for i in range(m):            
+        plt.subplot(2,6, i+1)        
+        x = R[i,:,:,1][indx] #MNN
+        plt.hist(x, np.linspace(-0.1,0.1,30), edgecolor=None, density=True)
+        # if i==5:
+        #     plt.xlabel('w')
+        plt.title('p={:.1f}'.format(p_array[i]))
+    plt.tight_layout()
+    plt.savefig(path+'hist_corr_coef_p.pdf')
+
+    # histogram of corr coef as line art
+    indx = np.triu_indices(num_neurons, k=1)
+    plt.figure(figsize=(3.5,3))
+    red_gradient = [
+    "#FFE5E5",  # Lightest (pinkish-white)
+    "#FFCCCC",  # Soft pink-red
+    "#FFB3B3",  # Warm pastel red
+    "#FF9999",  # Peachy red
+    "#FF8080",  # Light coral
+    "#FF6666",  # Medium warm red
+    "#FF4D4D",  # Vibrant tomato red
+    "#FF3333",  # Bright pure red
+    "#FF1A1A",  # Intense red
+    "#FF0000",  # Classic #FF0000 (RGB red)
+    "#CC0000"   # Deep crimson
+]
+    for i in range(m):
+        if i==0: continue  # skip p=0 since corr is 0            
+        x = R[i,:,:,1][indx] #MNN
+        bin_edges = np.linspace(-0.1,0.1,50)        
+        counts, _ = np.histogram(x, bin_edges , density=True)
+        bincenter = bin_edges[1:] - 0.5*(bin_edges[1]-bin_edges[0])        
+        plt.plot(bincenter, counts, color=red_gradient[i])
+        # if i==5:
+        #     plt.xlabel('w')
+    plt.legend(['p={:.1f}'.format(p) for p in p_array[1:]])
+    plt.xlabel('Noise correlation')
+    plt.ylabel('PDF')
+    plt.tight_layout()
+    plt.savefig(path+'histline_corr_coef_p.pdf')
+
+    plt.yscale('log')
+    plt.tight_layout()
+    plt.savefig(path+'histlog_corr_coef_p.pdf')
+
+    # average stats
+    plt.figure(figsize=(3.5*3,3))
+    plt.subplot(1,3,1)
+    y = 1e3*M[:,:,1].mean(1)
+    dy = (1e3*M[:,:,1]).std(1)
+    plt.fill_between(p_array, y-dy, y+dy, color='#1f77b4', alpha=0.2, label='Error Range')
+    plt.plot(p_array, y)
+    plt.xlabel('Conn. prob.')
+    plt.ylabel('Mean firing rate (sp/s)')
+    plt.subplot(1,3,2)
+    y = FF[:,:,1].mean(1)
+    dy = FF[:,:,1].std(1)
+    plt.fill_between(p_array, y-dy, y+dy, color='#1f77b4', alpha=0.2, label='Error Range')
+    plt.plot(p_array, y)
+    plt.xlabel('Conn. prob.')
+    plt.ylabel('Fano factor)')
+    plt.subplot(1,3,3)
+    #y = np.array([R[i,:,:,1][indx].std() for i in range(m)])
+    y = np.array([np.abs(R[i,:,:,1][indx]).mean() for i in range(m)])
+    #dy = np.array([np.abs(R[i,:,:,1][indx]).std() for i in range(m)])
+    #plt.fill_between(p_array, y-dy, y+dy, color='#1f77b4', alpha=0.2, label='Error Range')
+    plt.plot(p_array, y)
+    plt.xlabel('Conn. prob')
+    plt.ylabel('Abs. corr. coef.')
+    plt.tight_layout()
+    plt.savefig(path+'stats_vs_p.pdf')
 
     return
 
@@ -601,7 +798,10 @@ if __name__=='__main__':
     #rand_rmnn_debug(mean_ext=1.04, var_ext=16, flush_snn=True)
 
     #para_sweep_rec_rand_mean_var('rec_rand_mean_var_w5_t10')
-    plot_rec_rand_mean_var('rec_rand_mean_var_w5_t10')
+    #plot_rec_rand_mean_var('rec_rand_mean_var_w5_t10')
+
+    #para_sweep_rec_rand_p()
+    plot_rec_rand_p(exp_id='para_sweep_rec_rand_p', num_neurons=1000, w=10)
 
     # to run the script in background and print to log file: -u for instant flush
     #nohup python -u -m projects.rmnn.random_recurrent > output.log 2>&1 &
