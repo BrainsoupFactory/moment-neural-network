@@ -226,3 +226,13 @@ Migration Guides
    legacy_nn_migration
    legacy_models_snn_migration
    legacy_training_tools_migration
+
+
+Testing
+-------
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Testing
+
+   test_design_and_results
