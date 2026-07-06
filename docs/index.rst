@@ -139,14 +139,17 @@ The main package is ``mnn``.
 * ``mnn/mnn_core/nn``: neural-network layers, losses, activations, batch
   normalization, pooling, and functional utilities.
 * ``mnn/models``: ready-made MLP/CNN model wrappers, including MNN,
-  SNN-like, ANN, and mean-only variants.
+  SNN-like, ANN, mean-only variants, and Torch-first Pythonic parallel
+  APIs.
 * ``mnn/snn``: tools for converting trained MNNs to SNNs and simulating
-  them.
+  them, including Torch-first current, neuron, monitor, probe, and
+  validation APIs.
 * ``mnn/snn/base``: base neuron, current-generator, monitor, and probe
   classes.
-* ``mnn/utils/training_tools``: YAML-driven training pipeline,
-  dataloader setup, checkpointing, logging, resume logic, and
-  distributed-training helpers.
+* ``mnn/utils/training_tools`` and ``mnn/utils/training_tools_api``:
+  YAML-driven training pipeline, dataloader setup, checkpointing,
+  logging, resume logic, and distributed-training helpers. New code
+  should prefer the single-file ``training_tools_api`` entrypoint.
 * ``mnn/utils/dataloaders``: dataset loaders for MNIST and related
   examples.
 * ``mnn/analysis``: analysis and visualization helpers.
@@ -211,3 +214,25 @@ Tutorials
    tutorials/tutorial_training_mnn
    tutorials/tutorial_training_mnn_vanilla
    tutorials/tutorial_EI_network
+
+
+Migration Guides
+----------------
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Migration Guides
+
+   legacy_nn_migration
+   legacy_models_snn_migration
+   legacy_training_tools_migration
+
+
+Testing
+-------
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Testing
+
+   test_design_and_results

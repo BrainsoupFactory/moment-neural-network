@@ -6,6 +6,7 @@ import warnings
 import numpy as np
 from scipy.integrate import quad
 from scipy.special import erfcx, erfi, erfc, dawsn
+from erfi_pytorch import erfi as erfi_torch
 
 warnings.filterwarnings('ignore')
 

@@ -74,8 +74,15 @@ def _batch_norm_for_test(u, cov, gamma, beta, running_mean, running_var, beta_va
 
 
 class CustomBatchNorm1D(torch.nn.Module):
-    def __init__(self, num_features, eps: float = 1e-5, momentum: float = 0.9,
-                 bias_var: bool = False, special_init: bool = True, affine: bool = True, record_mean_var: bool = False):
+    def __init__(
+        self, 
+        num_features, 
+        eps: float = 1e-5, 
+        momentum: float = 0.9,
+        bias_var: bool = False, 
+        special_init: bool = True, 
+        affine: bool = True, 
+        record_mean_var: bool = False):
         super(CustomBatchNorm1D, self).__init__()
         self.num_features = num_features
         self.eps = eps
