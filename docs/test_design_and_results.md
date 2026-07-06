@@ -2,6 +2,28 @@
 
 This document describes the test design, main test cases, and most recent local results for the current `tests/` suite. The suite focuses on numerical agreement between the new Torch-first/Pythonic APIs and the legacy APIs, package export compatibility, device and dtype preservation, static dependency constraints, and CPU/GPU timing samples.
 
+## Test Run Metadata
+
+| Field | Value |
+| --- | --- |
+| Test date | 2026-07-06 |
+| Package version under test | `0.2.0` |
+| Legacy comparison baseline | `0.1.0` API behavior retained in legacy modules |
+| Command | `python -m unittest discover -s tests -p "test_*.py" -v` |
+| CUDA availability | Not available in the most recent run |
+
+## Version Comparison
+
+The current tests are designed around a compatibility comparison between the legacy `0.1.0` API behavior and the new `0.2.0` API surface.
+
+| Area | `0.1.0` Legacy API | `0.2.0` New API | Test coverage |
+| --- | --- | --- | --- |
+| Core MNN math | `fast_dawson.py`, `mnn_utils.py`, `mnn_pytorch.py`; NumPy/SciPy-backed CPU paths appear in core calculations | `torch_dawson.py`, `torch_core.py`, `torch_activation.py`; Torch-first Tensor paths | Numerical forward/backward agreement, autograd gradients, CPU/GPU timing hooks |
+| NN layers | Legacy names such as `OriginMnnActivation`, `LinearDuo`, `CustomBatchNorm1D` | Pythonic names such as `MomentActivation`, `MomentLinear`, `CustomMomentBatchNorm1d`, `MomentBlock` | Layer-by-layer output/gradient agreement and static dependency checks |
+| Models | Legacy MLP/ANN/SNN-style wrappers import legacy NN components | `MomentMlp`, `MomentRateMlp`, `SpikeMomentMlp`, `AnnMlpTorch`, `CnnWithPoolingClassifier` use new Torch-first NN APIs | Forward agreement, export checks, CPU benchmark, CUDA device-preservation check |
+| SNN | Legacy simulation and conversion helpers, with Loihi path kept as hardware boundary | Torch-first current sources, neurons, monitors/probes, validators, and MNN-to-SNN conversion helpers | Shape/statistics agreement, device/dtype checks, conversion smoke tests |
+| Training tools | Public helpers split across `general_prepare.py`, `functional.py`, and `general_train.py` | Single-file `mnn.utils.training_tools_api` entrypoint | Config/helper parity, minimal dataloader/optimizer/criterion setup, training-loop smoke test |
+
 ## How to Run
 
 Use the project `mnn` conda environment:
@@ -18,7 +40,7 @@ The most recent run did not detect CUDA, so CUDA-specific tests were skipped thr
 Most recent full run:
 
 ```text
-Ran 62 tests in 0.536s
+Ran 62 tests in 0.478s
 
 OK (skipped=5)
 ```
@@ -113,15 +135,15 @@ Most recent CPU results:
 
 | Case | Vanilla CPU | Torch CPU |
 | --- | ---: | ---: |
-| `activation_without_correlation` | 0.000809s/call | 0.002172s/call |
-| `activation_with_correlation` | 0.003543s/call | 0.005535s/call |
-| `nn.MomentActivation` | N/A | 0.013220s/call |
-| `core.forward` | 0.000486s/call | 0.001475s/call |
-| `core.backward` | 0.000640s/call | 0.003722s/call |
+| `activation_without_correlation` | 0.000497s/call | 0.001534s/call |
+| `activation_with_correlation` | 0.003623s/call | 0.005621s/call |
+| `nn.MomentActivation` | N/A | 0.013270s/call |
+| `core.forward` | 0.000478s/call | 0.001484s/call |
+| `core.backward` | 0.000663s/call | 0.003683s/call |
 | `dawson_first.evaluate` | 0.000019s/call | 0.000017s/call |
-| `dawson_first.integral` | 0.000080s/call | 0.000406s/call |
-| `dawson_second.evaluate` | 0.000147s/call | 0.000581s/call |
-| `dawson_second.integral` | 0.000126s/call | 0.000592s/call |
+| `dawson_first.integral` | 0.000075s/call | 0.000408s/call |
+| `dawson_second.evaluate` | 0.000135s/call | 0.000586s/call |
+| `dawson_second.integral` | 0.000117s/call | 0.000600s/call |
 
 Notes:
 
@@ -253,8 +275,8 @@ Most recent CPU results:
 
 | Case | Time |
 | --- | ---: |
-| legacy CPU `MnnMlp` | 0.000898s/call |
-| Torch CPU `MomentMlp` | 0.001472s/call |
+| legacy CPU `MnnMlp` | 0.000481s/call |
+| Torch CPU `MomentMlp` | 0.001325s/call |
 
 ## `test_torch_snn_api.py`
 
