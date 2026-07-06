@@ -180,6 +180,22 @@ class TorchActivationAccuracyTest(unittest.TestCase):
         _assert_close(self, vanilla_std.grad, torch_std.grad, atol=1e-11, rtol=1e-11)
         _assert_close(self, vanilla_correlation.grad, torch_correlation.grad, atol=1e-12, rtol=1e-12)
 
+    def test_activation_float32_cutoff_region_uses_stable_internal_precision(self):
+        sqrt_conductance = 0.05 ** 0.5
+        mean = torch.tensor([[1.0 - 9.0 * sqrt_conductance * 0.1, 0.9]], dtype=torch.float32, requires_grad=True)
+        std = torch.tensor([[0.1, 0.2]], dtype=torch.float32, requires_grad=True)
+        correlation = torch.eye(2, dtype=torch.float32).unsqueeze(0).requires_grad_()
+
+        outputs = mnn_activation_with_correlation(mean, std, correlation)
+        for tensor in outputs:
+            self.assertEqual(tensor.dtype, torch.float32)
+            self.assertTrue(torch.isfinite(tensor).all())
+
+        sum(tensor.sum() for tensor in outputs).backward()
+        self.assertTrue(torch.isfinite(mean.grad).all())
+        self.assertTrue(torch.isfinite(std.grad).all())
+        self.assertTrue(torch.isfinite(correlation.grad).all())
+
 
 class TorchActivationBenchmarkTest(unittest.TestCase):
     @classmethod

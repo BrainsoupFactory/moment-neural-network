@@ -40,7 +40,7 @@ The most recent run did not detect CUDA, so CUDA-specific tests were skipped thr
 Most recent full run:
 
 ```text
-Ran 62 tests in 0.478s
+Ran 63 tests in 0.518s
 
 OK (skipped=5)
 ```
@@ -102,6 +102,7 @@ Cases:
 
 - `test_activation_without_correlation_matches_vanilla_forward_and_backward`
 - `test_activation_with_correlation_matches_vanilla_forward_and_backward`
+- `test_activation_float32_cutoff_region_uses_stable_internal_precision`
 
 Design:
 
@@ -109,6 +110,7 @@ Design:
 - Compares legacy `mnn_activate_trio` with new `mnn_activation_with_correlation`.
 - Compares every forward output tensor.
 - Sums all outputs and runs backward, then compares gradients for `mean`, `std`, and `correlation`.
+- Exercises a float32 cutoff-region input where the activation internally promotes calculations to float64, then verifies finite forward outputs, finite gradients, and float32 output dtype preservation.
 
 Coverage intent:
 
@@ -135,15 +137,15 @@ Most recent CPU results:
 
 | Case | Vanilla CPU | Torch CPU |
 | --- | ---: | ---: |
-| `activation_without_correlation` | 0.000497s/call | 0.001534s/call |
-| `activation_with_correlation` | 0.003623s/call | 0.005621s/call |
-| `nn.MomentActivation` | N/A | 0.013270s/call |
-| `core.forward` | 0.000478s/call | 0.001484s/call |
-| `core.backward` | 0.000663s/call | 0.003683s/call |
-| `dawson_first.evaluate` | 0.000019s/call | 0.000017s/call |
-| `dawson_first.integral` | 0.000075s/call | 0.000408s/call |
-| `dawson_second.evaluate` | 0.000135s/call | 0.000586s/call |
-| `dawson_second.integral` | 0.000117s/call | 0.000600s/call |
+| `activation_without_correlation` | 0.000483s/call | 0.001550s/call |
+| `activation_with_correlation` | 0.003923s/call | 0.006208s/call |
+| `nn.MomentActivation` | N/A | 0.014487s/call |
+| `core.forward` | 0.000475s/call | 0.001525s/call |
+| `core.backward` | 0.000665s/call | 0.003703s/call |
+| `dawson_first.evaluate` | 0.000018s/call | 0.000017s/call |
+| `dawson_first.integral` | 0.000079s/call | 0.000442s/call |
+| `dawson_second.evaluate` | 0.000142s/call | 0.000599s/call |
+| `dawson_second.integral` | 0.000123s/call | 0.000653s/call |
 
 Notes:
 
@@ -275,8 +277,8 @@ Most recent CPU results:
 
 | Case | Time |
 | --- | ---: |
-| legacy CPU `MnnMlp` | 0.000481s/call |
-| Torch CPU `MomentMlp` | 0.001325s/call |
+| legacy CPU `MnnMlp` | 0.000655s/call |
+| Torch CPU `MomentMlp` | 0.001283s/call |
 
 ## `test_torch_snn_api.py`
 

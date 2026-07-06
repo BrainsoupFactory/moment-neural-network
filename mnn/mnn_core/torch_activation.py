@@ -33,16 +33,29 @@ def _set_diagonal(tensor: torch.Tensor, value: float) -> torch.Tensor:
 class MNNActivationWithCorrelation(torch.autograd.Function):
     @staticmethod
     def forward(ctx: Any, mean: torch.Tensor, std: torch.Tensor, correlation: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        output_mean, output_std, chi = _core.forward(mean, std)
-        chi_outer = torch.matmul(chi.unsqueeze(-1), chi.unsqueeze(-2))
-        output_correlation = _set_diagonal(correlation * chi_outer, 1.0)
-        ctx.save_for_backward(mean, std, correlation, output_mean, output_std, chi)
-        return output_mean, output_std, output_correlation
+        input_dtype = mean.dtype
+        mean64 = mean.to(dtype=torch.float64)
+        std64 = std.to(dtype=torch.float64)
+        correlation64 = correlation.to(dtype=torch.float64)
+        output_mean64, output_std64, chi64 = _core.forward(mean64, std64)
+        chi_outer = torch.matmul(chi64.unsqueeze(-1), chi64.unsqueeze(-2))
+        output_correlation64 = _set_diagonal(correlation64 * chi_outer, 1.0)
+        ctx.input_dtype = input_dtype
+        ctx.correlation_dtype = correlation.dtype
+        ctx.save_for_backward(mean64, std64, correlation64, output_mean64, output_std64, chi64)
+        return (
+            output_mean64.to(dtype=input_dtype),
+            output_std64.to(dtype=input_dtype),
+            output_correlation64.to(dtype=correlation.dtype),
+        )
 
     @staticmethod
     def backward(ctx: Any, *grad_outputs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         mean_grad, std_grad, correlation_grad = grad_outputs
         mean, std, correlation, output_mean, output_std, chi = ctx.saved_tensors
+        mean_grad = mean_grad.to(dtype=torch.float64)
+        std_grad = std_grad.to(dtype=torch.float64)
+        correlation_grad = correlation_grad.to(dtype=torch.float64)
         (
             grad_mean_mean,
             grad_mean_std,
@@ -67,26 +80,36 @@ class MNNActivationWithCorrelation(torch.autograd.Function):
             torch.matmul(chi.unsqueeze(-1), chi.unsqueeze(-2)) * correlation_grad,
             0.0,
         )
-        return mean_input_grad, std_input_grad, correlation_input_grad
+        return (
+            mean_input_grad.to(dtype=ctx.input_dtype),
+            std_input_grad.to(dtype=ctx.input_dtype),
+            correlation_input_grad.to(dtype=ctx.correlation_dtype),
+        )
 
 
 class MNNActivationWithoutCorrelation(torch.autograd.Function):
     @staticmethod
     def forward(ctx: Any, mean: torch.Tensor, std: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        output_mean = _core.forward_mean(mean, std)
-        output_std = _core.forward_std(mean, std, output_mean)
-        ctx.save_for_backward(mean, std, output_mean, output_std)
-        return output_mean, output_std
+        input_dtype = mean.dtype
+        mean64 = mean.to(dtype=torch.float64)
+        std64 = std.to(dtype=torch.float64)
+        output_mean64 = _core.forward_mean(mean64, std64)
+        output_std64 = _core.forward_std(mean64, std64, output_mean64)
+        ctx.input_dtype = input_dtype
+        ctx.save_for_backward(mean64, std64, output_mean64, output_std64)
+        return output_mean64.to(dtype=input_dtype), output_std64.to(dtype=input_dtype)
 
     @staticmethod
     def backward(ctx: Any, *grad_outputs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         mean_grad, std_grad = grad_outputs
         mean, std, output_mean, output_std = ctx.saved_tensors
+        mean_grad = mean_grad.to(dtype=torch.float64)
+        std_grad = std_grad.to(dtype=torch.float64)
         grad_mean_mean, grad_mean_std = _core.backward_mean(mean, std, output_mean)
         grad_std_mean, grad_std_std = _core.backward_std(mean, std, output_mean, output_std)
         mean_input_grad = mean_grad * grad_mean_mean + std_grad * grad_std_mean
         std_input_grad = mean_grad * grad_mean_std + std_grad * grad_std_std
-        return mean_input_grad, std_input_grad
+        return mean_input_grad.to(dtype=ctx.input_dtype), std_input_grad.to(dtype=ctx.input_dtype)
 
 
 class ConstantCurrentActivation(torch.autograd.Function):
