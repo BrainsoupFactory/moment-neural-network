@@ -24,9 +24,7 @@ MODEL:
 CRITERION:
   args:
     reduction: mean
-    num_class: 10
-    is_classify: True
-  name: SampleBasedEarthMoverLoss
+  name: FidelityLoss
   source: mnn_core
 
 

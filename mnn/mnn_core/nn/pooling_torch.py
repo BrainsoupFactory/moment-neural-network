@@ -24,5 +24,5 @@ class MomentPooling(torch.nn.Module):
         x = torch.flatten(x, start_dim=-2)
         mean, covariance = functional.mean_covariance_pooling(x, biological_pooling=self.biological_pooling)
         if self.mask_covariance:
-            covariance = covariance * self.unit_matrix.to(device=covariance.device, dtype=covariance.dtype)
+            covariance = covariance * self.unit_matrix.to(device=covariance.device, dtype=covariance.dtype) #type: ignore
         return mean, covariance
